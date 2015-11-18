@@ -63,6 +63,8 @@ struct CollectionOptions {
     long long cappedSize;
     long long cappedMaxDocs;
 
+    bool partitioned;
+
     // following 2 are mutually exclusive, can only have one set
     long long initialNumExtents;
     std::vector<long long> initialExtentSizes;

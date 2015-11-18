@@ -53,6 +53,7 @@ void CollectionOptions::reset() {
     capped = false;
     cappedSize = 0;
     cappedMaxDocs = 0;
+    partitioned = false;
     initialNumExtents = 0;
     initialExtentSizes.clear();
     autoIndexId = DEFAULT;
@@ -95,6 +96,8 @@ Status CollectionOptions::parse(const BSONObj& options) {
             if (!validMaxCappedDocs(&cappedMaxDocs))
                 return Status(ErrorCodes::BadValue,
                               "max in a capped collection has to be < 2^31 or not set");
+        } else if (fieldName == "partitioned") {
+            partitioned = e.trueValue();
         } else if (fieldName == "$nExtents") {
             if (e.type() == Array) {
                 BSONObjIterator j(e.Obj());
@@ -161,6 +164,9 @@ BSONObj CollectionOptions::toBSON() const {
         if (cappedMaxDocs)
             b.appendNumber("max", cappedMaxDocs);
     }
+
+    if (partitioned)
+        b.appendBool("partitioned", true);
 
     if (initialNumExtents)
         b.appendNumber("$nExtents", initialNumExtents);
