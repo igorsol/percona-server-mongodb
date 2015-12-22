@@ -97,6 +97,16 @@ public:
      */
     virtual void updateFlags(OperationContext* txn, int newValue) = 0;
 
+    // --------- partitions --------------
+
+    virtual bool isPartitioned(OperationContext* txn) const {
+        return false;
+    }
+    
+    virtual void getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const {
+        invariant(false);
+    }
+
 private:
     NamespaceString _ns;
 };

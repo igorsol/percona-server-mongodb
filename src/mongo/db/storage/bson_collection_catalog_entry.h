@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "mongo/db/catalog/collection_catalog_entry.h"
+#include "mongo/db/storage/partition_metadata.h"
 
 namespace mongo {
 
@@ -63,6 +64,8 @@ public:
 
     virtual bool isIndexReady(OperationContext* txn, const StringData& indexName) const;
 
+    virtual bool isPartitioned(OperationContext* txn) const;
+
     // ------ for implementors
 
     struct IndexMetaData {
@@ -83,6 +86,8 @@ public:
     };
 
     struct MetaData {
+        MetaData();
+        
         void parse(const BSONObj& obj);
         BSONObj toBSON() const;
 
@@ -99,8 +104,13 @@ public:
         std::string ns;
         CollectionOptions options;
         std::vector<IndexMetaData> indexes;
+        PartitionMetaData::deque partitions;
     };
 
+    // --------- partitions --------------
+
+    void getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const;
+    
 protected:
     virtual MetaData _getMetaData(OperationContext* txn) const = 0;
 };

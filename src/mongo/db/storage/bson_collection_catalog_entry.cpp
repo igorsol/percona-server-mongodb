@@ -103,6 +103,38 @@ bool BSONCollectionCatalogEntry::isIndexReady(OperationContext* txn,
     return md.indexes[offset].ready;
 }
 
+// --------- partitions --------------
+
+bool BSONCollectionCatalogEntry::isPartitioned(OperationContext* txn) const {
+    MetaData md = _getMetaData(txn);
+    return md.options.partitioned;
+}
+
+// returns the partition info with field names for the pivots filled in
+void BSONCollectionCatalogEntry::getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const {
+    MetaData md = _getMetaData(txn);
+    BSONArrayBuilder b;
+
+    uint64_t numPartitionsFoundInMeta = 0;
+    for (const auto& pmd: md.partitions) {
+#if 0        
+        BSONObj curr = c->current();
+        // the keys are stored without their field names,
+        // in the "packed" format. Here we put the
+        // field names back. Probably not the most efficient code,
+        // but it does not need to be. This function probably is not called
+        // very often
+        BSONObj filledPivot = fillPKWithFieldsWithPattern(curr["max"].Obj(), _pk);
+        BSONObjBuilder currWithFilledPivot;
+        cloneBSONWithFieldChanged(currWithFilledPivot, curr, "max", filledPivot, false);
+        b.append(currWithFilledPivot.obj());
+#endif        
+        ++numPartitionsFoundInMeta;
+    }
+    *numPartitions = numPartitionsFoundInMeta;
+    *partitionArray = b.arr();
+}
+
 // --------------------------
 
 void BSONCollectionCatalogEntry::IndexMetaData::updateTTLSetting(long long newExpireSeconds) {
@@ -121,6 +153,9 @@ void BSONCollectionCatalogEntry::IndexMetaData::updateTTLSetting(long long newEx
 
 // --------------------------
 
+BSONCollectionCatalogEntry::MetaData::MetaData()
+    : options(&partitions) {}
+    
 int BSONCollectionCatalogEntry::MetaData::findIndexOffset(const StringData& name) const {
     for (unsigned i = 0; i < indexes.size(); i++)
         if (indexes[i].name() == name)
@@ -166,6 +201,15 @@ BSONObj BSONCollectionCatalogEntry::MetaData::toBSON() const {
         }
         arr.done();
     }
+    if (options.partitioned) {
+        BSONArrayBuilder arr(b.subarrayStart("partitions"));
+        for (const auto& pmd: partitions) {
+            BSONObjBuilder sub(arr.subobjStart());
+            sub.appendElements(pmd.obj);
+            sub.done();
+        }
+        arr.done();
+    }
     return b.obj();
 }
 
@@ -191,6 +235,16 @@ void BSONCollectionCatalogEntry::MetaData::parse(const BSONObj& obj) {
             }
             imd.multikey = idx["multikey"].trueValue();
             indexes.push_back(imd);
+        }
+    }
+
+    if (options.partitioned) {
+        BSONElement ps = obj["partitions"];
+        if (ps.isABSONObj()) {
+            for (const auto& pmd: ps.Array()) {
+                // pmd is BSONElement with partition metadata
+                partitions.emplace_back(pmd);
+            }
         }
     }
 }

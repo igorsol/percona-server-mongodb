@@ -32,11 +32,13 @@
 
 #include "mongo/base/status.h"
 #include "mongo/db/jsobj.h"
+#include "mongo/db/storage/partition_metadata.h"
 
 namespace mongo {
 
 struct CollectionOptions {
-    CollectionOptions() {
+    CollectionOptions(PartitionMetaData::deque* partitions = nullptr)
+        : _partitions(partitions) {
         reset();
     }
 
@@ -91,5 +93,8 @@ struct CollectionOptions {
 
     // Storage engine collection options. Always owned or empty.
     BSONObj storageEngine;
+
+    // partitions MetaData attached to this options instance
+    const PartitionMetaData::deque* _partitions;    
 };
 }

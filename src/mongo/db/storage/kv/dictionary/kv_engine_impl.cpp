@@ -28,6 +28,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_capped.h"
+#include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 
 namespace mongo {
@@ -55,6 +56,9 @@ namespace mongo {
                                             const StringData& ns,
                                             const StringData& ident,
                                             const CollectionOptions& options ) {
+        // For partitioned collections this is delayed
+        if (options.partitioned)
+            return Status::OK();
         // Creating a record store is as simple as creating one with the given `ident'
         return createKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
                                   options.storageEngine);
@@ -69,17 +73,21 @@ namespace mongo {
                                                const StringData& ns,
                                                const StringData& ident,
                                                const CollectionOptions& options ) {
-        std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
-                                                  options.storageEngine));
-        std::auto_ptr<KVRecordStore> rs;
+        std::auto_ptr<RecordStore> rs;
         KVSizeStorer *sizeStorer = (persistDictionaryStats()
                                     ? getSizeStorer(opCtx)
                                     : NULL);
-        // We separated the implementations of capped / non-capped record stores for readability.
-        if (options.capped) {
-            rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options, sizeStorer, supportsDocLocking()));
+        if (options.partitioned) {
+            rs.reset(new KVRecordStorePartitioned(opCtx, this, ns, ident, options, sizeStorer));
         } else {
-            rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options, sizeStorer));
+            std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
+                                                      options.storageEngine));
+            // We separated the implementations of capped / non-capped record stores for readability.
+            if (options.capped) {
+                rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options, sizeStorer, supportsDocLocking()));
+            } else {
+                rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options, sizeStorer));
+            }
         }
         return rs.release();
     }

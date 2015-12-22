@@ -161,7 +161,7 @@ IndexCatalogEntry* IndexCatalog::_setupInMemoryStructures(OperationContext* txn,
                                                             _collection->infoCache()));
 
     entry->init(txn,
-                _collection->_dbce->getIndex(txn, _collection->getCatalogEntry(), entry.get()));
+                _collection->getDBCatalogEntry()->getIndex(txn, _collection->getCatalogEntry(), entry.get()));
 
     IndexCatalogEntry* save = entry.get();
     _entries.add(entry.release());
@@ -202,7 +202,7 @@ bool IndexCatalog::_shouldOverridePlugin(OperationContext* txn, const BSONObj& k
     string pluginName = IndexNames::findPluginName(keyPattern);
     bool known = IndexNames::isKnownName(pluginName);
 
-    if (!_collection->_dbce->isOlderThan24(txn)) {
+    if (!_collection->getDBCatalogEntry()->isOlderThan24(txn)) {
         // RulesFor24+
         // This assert will be triggered when downgrading from a future version that
         // supports an index plugin unsupported by this version.
@@ -247,7 +247,7 @@ Status IndexCatalog::_upgradeDatabaseMinorVersionIfNeeded(OperationContext* txn,
         return Status::OK();
     }
 
-    DatabaseCatalogEntry* dbce = _collection->_dbce;
+    DatabaseCatalogEntry* dbce = _collection->getDBCatalogEntry();
 
     if (!dbce->isOlderThan24(txn)) {
         return Status::OK();  // these checks have already been done

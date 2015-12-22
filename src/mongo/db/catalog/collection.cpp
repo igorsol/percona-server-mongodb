@@ -85,11 +85,11 @@ std::string CompactOptions::toString() const {
 
 // ----
 
-Collection::Collection(OperationContext* txn,
-                       const StringData& fullNS,
-                       CollectionCatalogEntry* details,
-                       RecordStore* recordStore,
-                       DatabaseCatalogEntry* dbce)
+CollectionImpl::CollectionImpl(OperationContext* txn,
+                               const StringData& fullNS,
+                               CollectionCatalogEntry* details,
+                               RecordStore* recordStore,
+                               DatabaseCatalogEntry* dbce)
     : _ns(fullNS),
       _details(details),
       _recordStore(recordStore),
@@ -105,12 +105,12 @@ Collection::Collection(OperationContext* txn,
     _infoCache.reset(txn);
 }
 
-Collection::~Collection() {
+CollectionImpl::~CollectionImpl() {
     verify(ok());
     _magic = 0;
 }
 
-bool Collection::requiresIdIndex() const {
+bool CollectionImpl::requiresIdIndex() const {
     if (_ns.ns().find('$') != string::npos) {
         // no indexes on indexes
         return false;
@@ -137,7 +137,7 @@ bool Collection::requiresIdIndex() const {
     return true;
 }
 
-RecordIterator* Collection::getIterator(OperationContext* txn,
+RecordIterator* CollectionImpl::getIterator(OperationContext* txn,
                                         const RecordId& start,
                                         const CollectionScanParams::Direction& dir) const {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IS));
@@ -146,18 +146,18 @@ RecordIterator* Collection::getIterator(OperationContext* txn,
     return _recordStore->getIterator(txn, start, dir);
 }
 
-vector<RecordIterator*> Collection::getManyIterators(OperationContext* txn) const {
+vector<RecordIterator*> CollectionImpl::getManyIterators(OperationContext* txn) const {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IS));
 
     return _recordStore->getManyIterators(txn);
 }
 
-Snapshotted<BSONObj> Collection::docFor(OperationContext* txn, const RecordId& loc) const {
+Snapshotted<BSONObj> CollectionImpl::docFor(OperationContext* txn, const RecordId& loc) const {
     return Snapshotted<BSONObj>(txn->recoveryUnit()->getSnapshotId(),
                                 _recordStore->dataFor(txn, loc).releaseToBson());
 }
 
-bool Collection::findDoc(OperationContext* txn,
+bool CollectionImpl::findDoc(OperationContext* txn,
                          const RecordId& loc,
                          Snapshotted<BSONObj>* out) const {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IS));
@@ -169,7 +169,7 @@ bool Collection::findDoc(OperationContext* txn,
     return true;
 }
 
-StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
+StatusWith<RecordId> CollectionImpl::insertDocument(OperationContext* txn,
                                                 const DocWriter* doc,
                                                 bool enforceQuota) {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IX));
@@ -182,7 +182,7 @@ StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
     return StatusWith<RecordId>(loc);
 }
 
-StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
+StatusWith<RecordId> CollectionImpl::insertDocument(OperationContext* txn,
                                                 const BSONObj& docToInsert,
                                                 bool enforceQuota) {
     const SnapshotId sid = txn->recoveryUnit()->getSnapshotId();
@@ -191,7 +191,7 @@ StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
         if (docToInsert["_id"].eoo()) {
             return StatusWith<RecordId>(ErrorCodes::InternalError,
                                         str::stream()
-                                            << "Collection::insertDocument got "
+                                            << "CollectionImpl::insertDocument got "
                                                "document without _id for ns:" << _ns.ns());
         }
     }
@@ -201,7 +201,7 @@ StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
     return res;
 }
 
-StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
+StatusWith<RecordId> CollectionImpl::insertDocument(OperationContext* txn,
                                                 const BSONObj& doc,
                                                 MultiIndexBlock* indexBlock,
                                                 bool enforceQuota) {
@@ -220,12 +220,12 @@ StatusWith<RecordId> Collection::insertDocument(OperationContext* txn,
     return loc;
 }
 
-RecordFetcher* Collection::documentNeedsFetch(OperationContext* txn, const RecordId& loc) const {
+RecordFetcher* CollectionImpl::documentNeedsFetch(OperationContext* txn, const RecordId& loc) const {
     return _recordStore->recordNeedsFetch(txn, loc);
 }
 
 
-StatusWith<RecordId> Collection::_insertDocument(OperationContext* txn,
+StatusWith<RecordId> CollectionImpl::_insertDocument(OperationContext* txn,
                                                  const BSONObj& docToInsert,
                                                  bool enforceQuota) {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IX));
@@ -252,7 +252,7 @@ StatusWith<RecordId> Collection::_insertDocument(OperationContext* txn,
     return loc;
 }
 
-Status Collection::aboutToDeleteCapped(OperationContext* txn,
+Status CollectionImpl::aboutToDeleteCapped(OperationContext* txn,
                                        const RecordId& loc,
                                        RecordData data) {
     /* check if any cursors point to us.  if so, advance them. */
@@ -264,7 +264,7 @@ Status Collection::aboutToDeleteCapped(OperationContext* txn,
     return Status::OK();
 }
 
-void Collection::deleteDocument(
+void CollectionImpl::deleteDocument(
     OperationContext* txn, const RecordId& loc, bool cappedOK, bool noWarn, BSONObj* deletedId) {
     if (isCapped() && !cappedOK) {
         log() << "failing remove on a capped ns " << _ns << endl;
@@ -292,7 +292,7 @@ void Collection::deleteDocument(
 Counter64 moveCounter;
 ServerStatusMetricField<Counter64> moveCounterDisplay("record.moves", &moveCounter);
 
-StatusWith<RecordId> Collection::updateDocument(OperationContext* txn,
+StatusWith<RecordId> CollectionImpl::updateDocument(OperationContext* txn,
                                                 const RecordId& oldLocation,
                                                 const Snapshotted<BSONObj>& objOld,
                                                 const BSONObj& objNew,
@@ -314,7 +314,7 @@ StatusWith<RecordId> Collection::updateDocument(OperationContext* txn,
     BSONElement oldId = objOld.value()["_id"];
     if (!oldId.eoo() && (oldId != objNew["_id"]))
         return StatusWith<RecordId>(
-            ErrorCodes::InternalError, "in Collection::updateDocument _id mismatch", 13596);
+            ErrorCodes::InternalError, "in CollectionImpl::updateDocument _id mismatch", 13596);
 
     // At the end of this step, we will have a map of UpdateTickets, one per index, which
     // represent the index updates needed to be done, based on the changes between objOld and
@@ -341,7 +341,7 @@ StatusWith<RecordId> Collection::updateDocument(OperationContext* txn,
         }
     }
 
-    // This can call back into Collection::recordStoreGoingToMove.  If that happens, the old
+    // This can call back into CollectionImpl::recordStoreGoingToMove.  If that happens, the old
     // object is removed from all indexes.
     StatusWith<RecordId> newLocation = _recordStore->updateRecord(
         txn, oldLocation, objNew.objdata(), objNew.objsize(), _enforceQuota(enforceQuota), this);
@@ -391,7 +391,7 @@ StatusWith<RecordId> Collection::updateDocument(OperationContext* txn,
     return newLocation;
 }
 
-Status Collection::recordStoreGoingToMove(OperationContext* txn,
+Status CollectionImpl::recordStoreGoingToMove(OperationContext* txn,
                                           const RecordId& oldLocation,
                                           const char* oldBuffer,
                                           size_t oldSize) {
@@ -401,14 +401,14 @@ Status Collection::recordStoreGoingToMove(OperationContext* txn,
     return Status::OK();
 }
 
-Status Collection::recordStoreGoingToUpdateInPlace(OperationContext* txn, const RecordId& loc) {
+Status CollectionImpl::recordStoreGoingToUpdateInPlace(OperationContext* txn, const RecordId& loc) {
     // Broadcast the mutation so that query results stay correct.
     _cursorManager.invalidateDocument(txn, loc, INVALIDATION_MUTATION);
     return Status::OK();
 }
 
 
-Status Collection::updateDocumentWithDamages(OperationContext* txn,
+Status CollectionImpl::updateDocumentWithDamages(OperationContext* txn,
                                              const RecordId& loc,
                                              const Snapshotted<RecordData>& oldRec,
                                              const char* damageSource,
@@ -422,7 +422,7 @@ Status Collection::updateDocumentWithDamages(OperationContext* txn,
     return _recordStore->updateWithDamages(txn, loc, oldRec.value(), damageSource, damages);
 }
 
-bool Collection::_enforceQuota(bool userEnforeQuota) const {
+bool CollectionImpl::_enforceQuota(bool userEnforeQuota) const {
     if (!userEnforeQuota)
         return false;
 
@@ -438,19 +438,19 @@ bool Collection::_enforceQuota(bool userEnforeQuota) const {
     return true;
 }
 
-bool Collection::isCapped() const {
+bool CollectionImpl::isCapped() const {
     return _recordStore->isCapped();
 }
 
-uint64_t Collection::numRecords(OperationContext* txn) const {
+uint64_t CollectionImpl::numRecords(OperationContext* txn) const {
     return _recordStore->numRecords(txn);
 }
 
-uint64_t Collection::dataSize(OperationContext* txn) const {
+uint64_t CollectionImpl::dataSize(OperationContext* txn) const {
     return _recordStore->dataSize(txn);
 }
 
-uint64_t Collection::getIndexSize(OperationContext* opCtx, BSONObjBuilder* details, int scale) {
+uint64_t CollectionImpl::getIndexSize(OperationContext* opCtx, BSONObjBuilder* details, int scale) {
     IndexCatalog* idxCatalog = getIndexCatalog();
 
     IndexCatalog::IndexIterator ii = idxCatalog->getIndexIterator(opCtx, true);
@@ -479,7 +479,7 @@ uint64_t Collection::getIndexSize(OperationContext* opCtx, BSONObjBuilder* detai
  * 3) truncate record store
  * 4) re-write indexes
  */
-Status Collection::truncate(OperationContext* txn) {
+Status CollectionImpl::truncate(OperationContext* txn) {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_X));
     BackgroundOperation::assertNoBgOpInProgForNs(ns());
     invariant(_indexCatalog.numIndexesInProgress(txn) == 0);
@@ -516,7 +516,7 @@ Status Collection::truncate(OperationContext* txn) {
     return Status::OK();
 }
 
-void Collection::temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive) {
+void CollectionImpl::temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive) {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IX));
     invariant(isCapped());
     BackgroundOperation::assertNoBgOpInProgForNs(ns());
@@ -541,7 +541,7 @@ public:
 };
 }
 
-Status Collection::validate(OperationContext* txn,
+Status CollectionImpl::validate(OperationContext* txn,
                             bool full,
                             bool scanData,
                             ValidateResults* results,
@@ -603,7 +603,7 @@ Status Collection::validate(OperationContext* txn,
     return Status::OK();
 }
 
-Status Collection::touch(OperationContext* txn,
+Status CollectionImpl::touch(OperationContext* txn,
                          bool touchData,
                          bool touchIndexes,
                          BSONObjBuilder* output) const {

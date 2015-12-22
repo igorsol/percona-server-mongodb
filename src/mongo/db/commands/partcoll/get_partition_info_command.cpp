@@ -21,6 +21,10 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 ======= */
 
 #include "mongo/db/auth/action_type.h"
+#include "mongo/db/catalog/collection.h"
+#include "mongo/db/catalog/collection_catalog_entry.h"
+#include "mongo/db/catalog/partitioned_collection.h"
+#include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 
 #include "get_partition_info_command.h"
@@ -56,9 +60,35 @@ namespace mongo {
                 return false;
             }
 
-            //TODO: this implementation is no-op
-            errmsg = "Not implemented yet";
-            return false;
+            BSONElement first = cmdObj.firstElement();
+            uassert(19172,
+                    str::stream() << "Argument to getPartitionInfo must be of type String, not "
+                                  << typeName(first.type()),
+                    first.type() == String);
+            const NamespaceString ns(parseNs(db, cmdObj));
+            uassert(19173, "Argument to getPartitionInfo must be a collection name, not the empty string",
+                    !ns.coll().empty());
+
+            AutoGetCollectionForRead autoColl(txn, ns);
+            if (!autoColl.getDb()) {
+                return appendCommandStatus(result,
+                                           Status(ErrorCodes::NamespaceNotFound, "no database"));
+            }
+
+            const Collection* collection = autoColl.getCollection();
+            if (!collection) {
+                return appendCommandStatus(result,
+                                           Status(ErrorCodes::NamespaceNotFound, "no collection"));
+            }
+
+            uassert(19174, "collection must be partitioned", collection->isPartitioned() );
+
+            uint64_t numPartitions = 0;
+            BSONArray arr;
+            collection->getCatalogEntry()->getPartitionInfo(txn, &numPartitions, &arr);
+            result.append("numPartitions", (long long)numPartitions);
+            result.append("partitions", arr);
+            return true;
         }
 
     }

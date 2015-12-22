@@ -97,7 +97,7 @@ private:
 }
 
 
-StatusWith<CompactStats> Collection::compact(OperationContext* txn,
+StatusWith<CompactStats> CollectionImpl::compact(OperationContext* txn,
                                              const CompactOptions* compactOptions) {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_X));
 

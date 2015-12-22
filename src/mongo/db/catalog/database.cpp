@@ -46,6 +46,7 @@
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/catalog/database_catalog_entry.h"
 #include "mongo/db/catalog/database_holder.h"
+#include "mongo/db/catalog/partitioned_collection.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/global_environment_experiment.h"
@@ -162,6 +163,20 @@ Status Database::validateDBName(const StringData& dbname) {
     return Status::OK();
 }
 
+/*static*/
+Collection* Database::makeCollectionInstance(OperationContext* txn, const StringData& ns, DatabaseCatalogEntry* dbce) {
+    auto_ptr<CollectionCatalogEntry> cce(dbce->getCollectionCatalogEntry(ns));
+    invariant(cce.get());
+
+    Collection* c = nullptr;
+    if (!cce->isPartitioned(txn)) {
+        c = new CollectionImpl(txn, ns, cce.release(), dbce->getRecordStore(ns), dbce);
+    } else {
+        c = new PartitionedCollection(txn, ns, cce.release(), dbce->getRecordStore(ns), dbce);
+    }
+    return c;
+}
+
 Collection* Database::_getOrCreateCollectionInstance(OperationContext* txn,
                                                      const StringData& fullns) {
     Collection* collection = getCollection(fullns);
@@ -169,14 +184,8 @@ Collection* Database::_getOrCreateCollectionInstance(OperationContext* txn,
         return collection;
     }
 
-    auto_ptr<CollectionCatalogEntry> cce(_dbEntry->getCollectionCatalogEntry(fullns));
-    invariant(cce.get());
-
-    auto_ptr<RecordStore> rs(_dbEntry->getRecordStore(fullns));
-    invariant(rs.get());  // if cce exists, so should this
-
     // Not registering AddCollectionChange since this is for collections that already exist.
-    Collection* c = new Collection(txn, fullns, cce.release(), rs.release(), _dbEntry);
+    Collection* c = makeCollectionInstance(txn, fullns, _dbEntry);
     return c;
 }
 
@@ -375,7 +384,7 @@ Status Database::dropCollection(OperationContext* txn, const StringData& fullns)
         return s;
     }
 
-    verify(collection->_details->getTotalIndexCount(txn) == 0);
+    verify(collection->getCatalogEntry()->getTotalIndexCount(txn) == 0);
     LOG(1) << "\t dropIndexes done" << endl;
 
     Top::global.collectionDropped(fullns);
@@ -411,7 +420,7 @@ void Database::_clearCollectionCache(OperationContext* txn, const StringData& fu
     // Takes ownership of the collection
     txn->recoveryUnit()->registerChange(new RemoveCollectionChange(this, it->second));
 
-    it->second->_cursorManager.invalidateAll(false);
+    it->second->getCursorManager()->invalidateAll(false);
     _collections.erase(it);
 }
 
