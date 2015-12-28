@@ -77,6 +77,16 @@ public:
 
     virtual void updateFlags(OperationContext* txn, int newValue);
 
+    /**
+     * Two-step update of partititon metadata array:
+     * 1. update 'max' value in old last partition (skipped if array is empty prior to this call)
+     * 2. append metadata for new last partition
+     */
+    void storeNewPartitionMetadata(OperationContext* txn,
+                                   BSONObj const& maxpkforprev,
+                                   int64_t partitionId,
+                                   BSONObj const& maxpk);
+
     RecordStore* getRecordStore() {
         return _recordStore.get();
     }

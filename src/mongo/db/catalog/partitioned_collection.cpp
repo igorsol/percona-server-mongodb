@@ -24,6 +24,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/db/catalog/collection_catalog_entry.h"
 #include "mongo/db/catalog/partitioned_collection.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 
@@ -55,11 +56,20 @@ PartitionedCollection::PartitionedCollection(OperationContext* txn,
     invariant(!isCapped());
     _infoCache.reset(txn);
 
-    //TODO: init _pkPattern
-    //TODO: Create partitions from metadata
-    //for (: getCatalogEntry()->) {
-    //    _partitions->push_back(new CollectionImpl(txn, , cce, , dbce));
-    //}
+    // init _pkPattern
+    auto opts = _cce->getCollectionOptions(txn);
+    if (opts.primaryKey.isEmpty())
+        _pkPattern = BSON("_id" << 1);
+    else
+        _pkPattern = opts.primaryKey;
+
+    // Create partitions from metadata
+    Status status = _cce->forEachPMD(txn, [this, txn](BSONObj const& pmd){return loadPartition(txn, pmd);});
+    invariant(status.isOK());
+}
+
+Status PartitionedCollection::initOnCreate(OperationContext* txn) {
+    return createPartition(txn);
 }
 
 PartitionedCollection::~PartitionedCollection() {
@@ -344,27 +354,39 @@ BSONObj PartitionedCollection::getPK(const BSONObj& doc) const {
 
 Status PartitionedCollection::createPartition(OperationContext* txn) {
     int64_t id = 0;
+    BSONObj maxpkforprev;
     if (_partitions.size() > 0) {
         id = _partitions.back().id + 1;
-        id |= 0x7fffff;
+        id &= 0x7fffff;
         // check if we reached maximum partitions limit
         uassert(19177, "Cannot create partition. Too many partitions already exist.",
                 id != _partitions.front().id);
-        //TODO: update metadata for previous partition
+        //TODO: get maxpkforprev from last partition
     }
     StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
     if (!prs.isOK())
         return prs.getStatus();
     Collection* collection = new CollectionImpl(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
+    // update partition metadata structures
+    if (_partitions.size() > 0) {
+        _partitions.back().maxpk = maxpkforprev;
+    }
     _partitions.emplace_back(id, getUpperBound(), collection);
-    //TODO: create indexes on new partition
-    //TODO: update metadata
+    _cce->storeNewPartitionMetadata(txn, maxpkforprev, id, _partitions.back().maxpk);
     return Status::OK();
 }
 
-void PartitionedCollection::addPartition() {
-    raise(SIGTRAP); //TODO: implement addPartititon
-    //_partitions.emplace_back();
+// Input: BSONObj with partition metadata
+// - partition Id
+// - maximim value of PK
+Status PartitionedCollection::loadPartition(OperationContext* txn, BSONObj const& pmd) {
+    const int64_t id = pmd["_id"].numberLong();
+    StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
+    if (!prs.isOK())
+        return prs.getStatus();
+    Collection* collection = new CollectionImpl(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
+    _partitions.emplace_back(id, pmd["max"], collection);
+    return Status::OK();
 }
 
 BSONObj PartitionedCollection::getUpperBound() const {
@@ -374,10 +396,10 @@ BSONObj PartitionedCollection::getUpperBound() const {
         BSONElement elt = pkIter.next();
         int order = elt.isNumber() ? elt.numberInt() : 1;
         if( order > 0 ){
-            c.appendMaxKey( "" );
+            c.appendMaxKey( elt.fieldName() );
         }
         else {
-            c.appendMinKey( "" );
+            c.appendMinKey( elt.fieldName() );
         }
     }
     return c.obj();

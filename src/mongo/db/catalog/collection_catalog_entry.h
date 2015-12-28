@@ -107,6 +107,22 @@ public:
         invariant(false);
     }
 
+    /**
+     * Two-step update of partititon metadata array:
+     * 1. update 'max' value in old last partition (skipped if array is empty prior to this call)
+     * 2. append metadata for new last partition
+     */
+    virtual void storeNewPartitionMetadata(OperationContext* txn,
+                                           BSONObj const& maxpkforprev,
+                                           int64_t partitionId,
+                                           BSONObj const& maxpk) {
+        invariant(false);
+    }
+
+    virtual Status forEachPMD(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) {
+        invariant(false);
+        return Status::OK();
+    }
 private:
     NamespaceString _ns;
 };

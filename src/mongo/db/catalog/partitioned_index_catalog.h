@@ -32,6 +32,13 @@ class PartitionedIndexCatalog : public IndexCatalog {
 public:
     PartitionedIndexCatalog(PartitionedCollection* collection);
     ~PartitionedIndexCatalog();
+
+    /**
+     * Call this only on an empty collection from inside a WriteUnitOfWork. Index creation on an
+     * empty collection can be rolled back as part of a larger WUOW.
+     */
+    Status createIndexOnEmptyCollection(OperationContext* txn, BSONObj spec);
+
 };
 
 }

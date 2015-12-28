@@ -24,6 +24,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "mongo/db/catalog/partitioned_collection.h"
 
+#include <signal.h>  //TODO: remove when SIGTRAP debugging will be finished
+
 namespace mongo {
 
 PartitionedIndexCatalog::PartitionedIndexCatalog(PartitionedCollection* collection)
@@ -33,6 +35,11 @@ PartitionedIndexCatalog::PartitionedIndexCatalog(PartitionedCollection* collecti
 
 PartitionedIndexCatalog::~PartitionedIndexCatalog() {
 
+}
+
+Status PartitionedIndexCatalog::createIndexOnEmptyCollection(OperationContext* txn, BSONObj spec) {
+    raise(SIGTRAP); //TODO: just check where this is called from    
+    return Status::OK();
 }
 
 }

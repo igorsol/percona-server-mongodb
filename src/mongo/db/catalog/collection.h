@@ -99,6 +99,10 @@ struct CompactStats {
  */
 class Collection {
 public:
+    // called after constructor when collection is created for the first time
+    // used to create first partition in partitioned collection
+    virtual Status initOnCreate(OperationContext* txn) { return Status::OK(); }
+
     virtual ~Collection() {}
 
     virtual bool ok() const = 0;

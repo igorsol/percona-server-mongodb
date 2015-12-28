@@ -40,7 +40,9 @@ public:
                            RecordStore* recordStore,     // does not own
                            DatabaseCatalogEntry* dbce);  // does not own
 
-    virtual ~PartitionedCollection();
+    Status initOnCreate(OperationContext* txn);
+
+    ~PartitionedCollection();
 
     bool ok() const {
         return _magic == 1357924;
@@ -228,7 +230,7 @@ public:
     Status createPartition(OperationContext* txn);
 
     // add existing partition from metadata
-    void addPartition();
+    Status loadPartition(OperationContext* txn, BSONObj const& pmd);
 
 private:
     Collection* getPrttnForRecordId(const RecordId& loc) const;
@@ -247,6 +249,10 @@ private:
         PartitionData(int64_t _id, BSONObj const& _maxpk, Collection* _collection)
             : id(_id),
               maxpk(_maxpk),
+              collection(_collection) {}
+        PartitionData(int64_t _id, BSONElement const& _maxpk, Collection* _collection)
+            : id(_id),
+              maxpk(_maxpk.Obj().getOwned()),
               collection(_collection) {}
     };
 

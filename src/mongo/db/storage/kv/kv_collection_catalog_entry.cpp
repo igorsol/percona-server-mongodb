@@ -169,6 +169,15 @@ void KVCollectionCatalogEntry::updateFlags(OperationContext* txn, int newValue) 
     _catalog->putMetaData(txn, ns().toString(), md);
 }
 
+void KVCollectionCatalogEntry::storeNewPartitionMetadata(OperationContext* txn,
+                                                         BSONObj const& maxpkforprev,
+                                                         int64_t partitionId,
+                                                         BSONObj const& maxpk) {
+    MetaData md = _getMetaData(txn);
+    md.storeNewPartitionMetadata(maxpkforprev, partitionId, maxpk);
+    _catalog->putMetaData(txn, ns().toString(), md);
+}
+
 BSONCollectionCatalogEntry::MetaData KVCollectionCatalogEntry::_getMetaData(
     OperationContext* txn) const {
     return _catalog->getMetaData(txn, ns().toString());

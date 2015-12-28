@@ -510,6 +510,11 @@ Collection* Database::createCollection(OperationContext* txn,
 
     Collection* collection = _getOrCreateCollectionInstance(txn, ns);
     invariant(collection);
+
+    // create first partition if collection is partitioned
+    status = collection->initOnCreate(txn);
+    massertNoTraceStatusOK(status);
+
     _collections[ns] = collection;
 
     if (createIdIndex) {

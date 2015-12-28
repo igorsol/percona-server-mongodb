@@ -53,7 +53,7 @@ class IndexAccessMethod;
 class IndexCatalog {
 public:
     IndexCatalog(Collection* collection);
-    ~IndexCatalog();
+    virtual ~IndexCatalog();
 
     // must be called before used
     Status init(OperationContext* txn);
@@ -175,7 +175,7 @@ public:
      * Call this only on an empty collection from inside a WriteUnitOfWork. Index creation on an
      * empty collection can be rolled back as part of a larger WUOW.
      */
-    Status createIndexOnEmptyCollection(OperationContext* txn, BSONObj spec);
+    virtual Status createIndexOnEmptyCollection(OperationContext* txn, BSONObj spec);
 
     StatusWith<BSONObj> prepareSpecForCreate(OperationContext* txn, const BSONObj& original) const;
 

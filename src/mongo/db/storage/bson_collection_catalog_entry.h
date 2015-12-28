@@ -101,6 +101,13 @@ public:
 
         void rename(const StringData& toNS);
 
+        /**
+         * Two-step update of partititon metadata array:
+         * 1. update 'max' value in old last partition (skipped if array is empty prior to this call)
+         * 2. append metadata for new last partition
+         */
+        void storeNewPartitionMetadata(BSONObj const& maxpkforprev, int64_t partitionId, BSONObj const& maxpk);
+
         std::string ns;
         CollectionOptions options;
         std::vector<IndexMetaData> indexes;
@@ -111,6 +118,17 @@ public:
 
     void getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const;
     
+    Status forEachPMD(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) {
+        Status status = Status::OK();
+        MetaData md = _getMetaData(txn);
+        for (const auto& pmd: md.partitions) {
+            status = f(pmd.obj);
+            if (!status.isOK())
+                break;
+        }
+        return status;
+    }
+
 protected:
     virtual MetaData _getMetaData(OperationContext* txn) const = 0;
 };

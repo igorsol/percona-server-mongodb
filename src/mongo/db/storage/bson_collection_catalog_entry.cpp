@@ -117,18 +117,8 @@ void BSONCollectionCatalogEntry::getPartitionInfo(OperationContext* txn, uint64_
 
     uint64_t numPartitionsFoundInMeta = 0;
     for (const auto& pmd: md.partitions) {
-#if 0        
-        BSONObj curr = c->current();
-        // the keys are stored without their field names,
-        // in the "packed" format. Here we put the
-        // field names back. Probably not the most efficient code,
-        // but it does not need to be. This function probably is not called
-        // very often
-        BSONObj filledPivot = fillPKWithFieldsWithPattern(curr["max"].Obj(), _pk);
-        BSONObjBuilder currWithFilledPivot;
-        cloneBSONWithFieldChanged(currWithFilledPivot, curr, "max", filledPivot, false);
-        b.append(currWithFilledPivot.obj());
-#endif        
+        // each array element must have '_id', 'max', 'createTime'
+        b.append(pmd.obj);
         ++numPartitionsFoundInMeta;
     }
     *numPartitions = numPartitionsFoundInMeta;
@@ -248,4 +238,31 @@ void BSONCollectionCatalogEntry::MetaData::parse(const BSONObj& obj) {
         }
     }
 }
+
+void BSONCollectionCatalogEntry::MetaData::storeNewPartitionMetadata(BSONObj const& maxpkforprev,
+                                                                     int64_t partitionId,
+                                                                     BSONObj const& maxpk) {
+    if (partitions.size() > 0) {
+        auto& back = partitions.back();
+        invariant(((back.id + 1) & 0x7fffff) == partitionId);
+        // replace 'max' value in the last metadata
+        BSONObjBuilder b(64);
+        const StringData fieldName("max");
+        for (BSONObjIterator it(back.obj); it.more(); it.next()) {
+            BSONElement e = *it;
+            if (fieldName == e.fieldName()) {
+                b.append(fieldName, maxpkforprev);
+            } else {
+                b.append(e);
+            }
+        }
+        back.obj = b.obj();
+    }
+    BSONObjBuilder b(64);
+    b.append("_id", (long long)partitionId);
+    b.append("max", maxpk);
+    b.appendDate("createTime", curTimeMillis64());
+    partitions.emplace_back(b.obj());
+}
+
 }

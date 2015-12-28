@@ -94,6 +94,10 @@ struct CollectionOptions {
     // Storage engine collection options. Always owned or empty.
     BSONObj storageEngine;
 
+    // primary key pattern for partitioned collection
+    // empty value means '_id' primary key
+    BSONObj primaryKey;
+
     // partitions MetaData attached to this options instance
     const PartitionMetaData::deque* _partitions;    
 };
