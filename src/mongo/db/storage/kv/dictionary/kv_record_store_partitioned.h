@@ -150,9 +150,134 @@ namespace mongo {
 
         StatusWith<RecordStore*> createPartition(OperationContext* txn, uint64_t partitionID);
 
+        class KVRecordIteratorPartitioned : public RecordIterator {
+        protected:
+            const KVRecordStorePartitioned &_rs;
+            RecordId _savedLoc;
+            RecordData _savedVal;
+
+            // May change due to saveState() / restoreState()
+            OperationContext *_txn;
+
+            // current state: current partition's iterator
+            RecordIterator *_rIt;
+
+            void _saveLocAndVal();
+
+            // abstract methods which implementation depends on _dir value
+            virtual void setLocation(const RecordId id) = 0;
+            virtual void advancePartition() = 0;
+            virtual bool isLastPartition() const = 0;
+
+        public:
+            KVRecordIteratorPartitioned(const KVRecordStorePartitioned &rs, OperationContext *txn,
+                                        const RecordId &start);
+            ~KVRecordIteratorPartitioned();
+
+            bool isEOF();
+
+            RecordId curr();
+
+            RecordId getNext();
+
+            void invalidate(const RecordId& loc);
+
+            void saveState();
+
+            bool restoreState(OperationContext* txn);
+
+            RecordData dataFor(const RecordId& loc) const;
+
+        };
+
+        class KVRecordIteratorPartitionedForward : public KVRecordIteratorPartitioned {
+            std::deque<RecordStore*>::const_iterator it;
+
+            std::deque<RecordStore*>::const_iterator _getPartitionIterator(int64_t partitionID) const {
+                return _rs._getForwardPartitionIterator(partitionID);
+            }
+
+            void setLocation(const RecordId loc) override {
+                // This is only called to recover saved state
+                // so there should be no record iterator
+                invariant(!_rIt);
+                // This is only called with non-null locations
+                invariant(!loc.isNull());
+                it = _getPartitionIterator(loc.partitionId());
+                _rIt = (*it)->getIterator(_txn, loc);
+                _savedLoc = RecordId();
+            }
+
+            bool isLastPartition() const override {
+                return it == _rs._partitions.cend();
+            }
+
+            void advancePartition() override {
+                invariant(!isLastPartition());
+                delete _rIt;
+                _rIt = (*++it)->getIterator(_txn);
+            }
+
+        public:
+            KVRecordIteratorPartitionedForward(const KVRecordStorePartitioned &rs, OperationContext *txn,
+                                               const RecordId &start)
+                : KVRecordIteratorPartitioned(rs, txn, start),
+                  it(rs._partitions.cbegin()) {
+                if (!start.isNull()) {
+                    it = _getPartitionIterator(start.partitionId());
+                }
+                _rIt = (*it)->getIterator(_txn, start);
+            }
+
+        };
+
+        class KVRecordIteratorPartitionedBackward : public KVRecordIteratorPartitioned {
+            std::deque<RecordStore*>::const_reverse_iterator it;
+
+            std::deque<RecordStore*>::const_reverse_iterator _getPartitionIterator(int64_t partitionID) const {
+                return _rs._getBackwardPartitionIterator(partitionID);
+            }
+
+            void setLocation(const RecordId loc) override {
+                // This is only called to recover saved state
+                // so there should be no record iterator
+                invariant(!_rIt);
+                // This is only called with non-null locations
+                invariant(!loc.isNull());
+                it = _getPartitionIterator(loc.partitionId());
+                _rIt = (*it)->getIterator(_txn, loc, CollectionScanParams::BACKWARD);
+                _savedLoc = RecordId();
+            }
+
+            bool isLastPartition() const override {
+                return it == _rs._partitions.crend();
+            }
+
+            void advancePartition() override {
+                invariant(!isLastPartition());
+                delete _rIt;
+                _rIt = (*++it)->getIterator(_txn, RecordId(), CollectionScanParams::BACKWARD);
+            }
+
+        public:
+            KVRecordIteratorPartitionedBackward(const KVRecordStorePartitioned &rs, OperationContext *txn,
+                                               const RecordId &start)
+                : KVRecordIteratorPartitioned(rs, txn, start),
+                  it(rs._partitions.crbegin()) {
+                if (!start.isNull()) {
+                    it = _getPartitionIterator(start.partitionId());
+                }
+                _rIt = (*it)->getIterator(_txn, start, CollectionScanParams::BACKWARD);
+            }
+
+        };
+
     protected:
         // get RecordStore* for given RecordId
         RecordStore* rsForRecordId(const RecordId& loc) const;
+
+        std::deque<RecordStore*>::const_iterator _getForwardPartitionIterator(int64_t partitionID) const;
+        std::deque<RecordStore*>::const_reverse_iterator _getBackwardPartitionIterator(int64_t partitionID) const;
 
         // Locally cached copies of these counters.
         AtomicInt64 _dataSize;

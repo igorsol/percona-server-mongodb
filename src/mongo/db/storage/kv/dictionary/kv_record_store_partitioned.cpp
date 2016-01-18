@@ -58,24 +58,6 @@ namespace mongo {
         // partition options
         _partitionOptions.partitioned = false;
         _partitionOptions._partitions = nullptr;
-
-        //TODO: remove: load partitions from metadata
-#if 0
-        if (options._partitions) {
-            for (auto const& pmd: *options._partitions) {
-                uint64_t currID = pmd.obj["_id"].numberLong();
-
-                _partitions.push_back(kvEngine->getRecordStore(opCtx,
-                                                               ns,
-                                                               getPartitionName(ident, currID),
-                                                               partopt));
-
-                // extract the pivot
-                _partitionPivots.push_back(RecordId(pmd.obj["max"].numberLong()));
-                _partitionIDs.push_back(currID);
-            }
-        }
-#endif        
     }
 
     StatusWith<RecordStore*> KVRecordStorePartitioned::createPartition(OperationContext* txn, uint64_t partitionID) {
@@ -176,13 +158,12 @@ namespace mongo {
     RecordIterator* KVRecordStorePartitioned::getIterator( OperationContext* txn,
                                                            const RecordId& start,
                                                            const CollectionScanParams::Direction& dir) const {
-        //TODO: implement similar to KVRecordStore::KVRecordIterator
-        // below is broken implementation (iterates over last partition only)
-        return _partitions.back()->getIterator(txn, start, dir);
+        if (dir == CollectionScanParams::FORWARD)
+            return new KVRecordIteratorPartitionedForward(*this, txn, start);
+        return new KVRecordIteratorPartitionedBackward(*this, txn, start);
     }
 
     std::vector<RecordIterator *> KVRecordStorePartitioned::getManyIterators( OperationContext* txn ) const {
-        //TODO: implement
         std::vector<RecordIterator *> result;
         for (RecordStore* rs: _partitions) {
             std::vector<RecordIterator *> tmp = rs->getManyIterators(txn);
@@ -278,7 +259,12 @@ namespace mongo {
     void KVRecordStorePartitioned::updateStatsAfterRepair(OperationContext* txn,
                                                           long long numRecords,
                                                           long long dataSize) {
-        //TODO: implement
+        if (_sizeStorer) {
+            _numRecords.store(numRecords);
+            _dataSize.store(dataSize);
+            _sizeStorer->store(this, _ident, numRecords, dataSize);
+            _sizeStorer->storeIntoDict(txn);
+        }
     }
 
     RecordStore* KVRecordStorePartitioned::rsForRecordId(const RecordId& loc) const {
@@ -300,6 +286,158 @@ namespace mongo {
             _partitionIDs.end(),
             partitionID);
         return _partitions[low - _partitionIDs.begin()];
+    }
+
+    std::deque<RecordStore*>::const_iterator
+    KVRecordStorePartitioned::_getForwardPartitionIterator(int64_t partitionID) const {
+        if (_partitions.size() == 1) {
+            invariant(partitionID == _partitionIDs[0]);
+            return _partitions.cbegin();
+        }
+        if (partitionID == _partitionIDs.back()) {
+            return --_partitions.cend();
+        }
+        auto low = std::lower_bound(
+            _partitionIDs.cbegin(),
+            _partitionIDs.cend(),
+            partitionID);
+        invariant(partitionID == *low);
+        return _partitions.cbegin() + (low - _partitionIDs.cbegin());
+    }
+
+    std::deque<RecordStore*>::const_reverse_iterator
+    KVRecordStorePartitioned::_getBackwardPartitionIterator(int64_t partitionID) const {
+        if (_partitions.size() == 1 || partitionID == _partitionIDs.back()) {
+            invariant(partitionID == _partitionIDs.back());
+            return _partitions.crbegin();
+        }
+        auto low = std::lower_bound(
+            _partitionIDs.cbegin(),
+            _partitionIDs.cend(),
+            partitionID);
+        invariant(partitionID == *low);
+        return _partitions.crbegin() + (_partitions.size() - (low - _partitionIDs.cbegin()) - 1);
+    }
+
+    // ---------------------------------------------------------------------- //
+
+    KVRecordStorePartitioned::KVRecordIteratorPartitioned::KVRecordIteratorPartitioned(
+        const KVRecordStorePartitioned &rs, OperationContext *txn,
+        const RecordId &start)
+        : _rs(rs),
+          _txn(txn),
+          _rIt(nullptr) // _rIt can be initialized by descendant classes only
+    {
+    }
+
+    KVRecordStorePartitioned::KVRecordIteratorPartitioned::~KVRecordIteratorPartitioned() {
+        delete _rIt;
+    }
+
+    bool KVRecordStorePartitioned::KVRecordIteratorPartitioned::isEOF() {
+        return !_rIt || _rIt->isEOF();
+    }
+
+    RecordId KVRecordStorePartitioned::KVRecordIteratorPartitioned::curr() {
+        if (isEOF()) {
+            return RecordId();
+        }
+
+        return _rIt->curr();
+    }
+
+    void KVRecordStorePartitioned::KVRecordIteratorPartitioned::_saveLocAndVal() {
+        invariant(_rIt);
+        if (!isEOF()) {
+            _savedLoc = curr();
+            _savedVal = _rIt->dataFor(_savedLoc);
+            dassert(_savedLoc.isNormal());
+        } else {
+            _savedLoc = RecordId();
+            _savedVal = RecordData();
+        }
+    }
+
+    RecordId KVRecordStorePartitioned::KVRecordIteratorPartitioned::getNext() {
+        RecordId result;
+
+        // return RecordId() if isEOF
+        if (_rIt->isEOF() && isLastPartition())
+            return result;
+
+        // if this is not last partition then isEOF must be false
+        invariant(!_rIt->isEOF());
+
+        // We need valid copies of _savedLoc / _savedVal since we are
+        // about to advance the underlying cursor.
+        _saveLocAndVal();
+
+        // otherwise return the RecordId that the iterator points at
+        result = _rIt->getNext();
+
+        // and move the iterator to the next item from the collection
+        while (_rIt->isEOF() && !isLastPartition()) {
+            advancePartition();
+        }
+        return result;
+    }
+
+    void KVRecordStorePartitioned::KVRecordIteratorPartitioned::invalidate(const RecordId& loc) {
+        // this only gets called to invalidate potentially buffered
+        // `loc' results between saveState() and restoreState(). since
+        // we dropped our cursor and have no buffered rows, we do nothing.
+    }
+
+    void KVRecordStorePartitioned::KVRecordIteratorPartitioned::saveState() {
+        // we need to drop the current cursor because it was created with
+        // an operation context that the caller intends to close after
+        // this function finishes (and before restoreState() is called,
+        // which will give us a new operation context)
+        _saveLocAndVal();
+        delete _rIt;
+        _rIt = nullptr;
+        _txn = nullptr;
+    }
+
+    bool KVRecordStorePartitioned::KVRecordIteratorPartitioned::restoreState(OperationContext* txn) {
+        invariant(!_txn && !_rIt);
+        _txn = txn;
+        if (!_savedLoc.isNull()) {
+            RecordId saved = _savedLoc;
+            setLocation(_savedLoc);
+        } else {
+            // We had saved state when the cursor was at EOF, so the savedLoc
+            // was null - therefore we must restoreState to EOF as well. 
+            //
+            // Assert that this is indeed the case.
+            invariant(isEOF());
+        }
+
+        // `true' means the collection still exists, which is always the case
+        // because this cursor would have been deleted by higher layers if
+        // the collection were to indeed be dropped.
+        return true;
+    }
+
+    RecordData KVRecordStorePartitioned::KVRecordIteratorPartitioned::dataFor(const RecordId& loc) const {
+        invariant(_txn);
+
+        // Kind-of tricky:
+        //
+        // We save the last loc and val that we were pointing to before a call
+        // to getNext(). We know that our caller intends to call dataFor() on
+        // each loc read this way, so if the given loc is equal to the last 
+        // loc, then we can return the last value read, which we own and now
+        // pass to the caller with a shared pointer.
+        if (!_savedLoc.isNull() && _savedLoc == loc) {
+            return _savedVal;
+        } else {
+            // .. otherwise something strange happened and the caller actually
+            // wants some other data entirely. we should probably never execute
+            // this code that often because it is slow to descend the dictionary
+            // for every value we want to read..
+            return _rs.dataFor(_txn, loc);
+        }
     }
 
 } // namespace mongo
