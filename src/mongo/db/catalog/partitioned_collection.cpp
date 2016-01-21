@@ -366,7 +366,7 @@ Status PartitionedCollection::createPartition(OperationContext* txn) {
     StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
     if (!prs.isOK())
         return prs.getStatus();
-    Collection* collection = new CollectionImpl(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
+    Collection* collection = new coll::Collection(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
     // update partition metadata structures
     if (_partitions.size() > 0) {
         _partitions.back().maxpk = maxpkforprev;
@@ -384,7 +384,7 @@ Status PartitionedCollection::loadPartition(OperationContext* txn, BSONObj const
     StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
     if (!prs.isOK())
         return prs.getStatus();
-    Collection* collection = new CollectionImpl(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
+    Collection* collection = new coll::Collection(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
     _partitions.emplace_back(id, pmd["max"], collection);
     return Status::OK();
 }

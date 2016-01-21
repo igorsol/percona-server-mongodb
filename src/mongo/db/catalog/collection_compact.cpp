@@ -97,7 +97,8 @@ private:
 }
 
 
-StatusWith<CompactStats> CollectionImpl::compact(OperationContext* txn,
+namespace coll {
+StatusWith<CompactStats> Collection::compact(OperationContext* txn,
                                              const CompactOptions* compactOptions) {
     dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_X));
 
@@ -189,6 +190,7 @@ StatusWith<CompactStats> CollectionImpl::compact(OperationContext* txn,
     }
 
     return StatusWith<CompactStats>(stats);
+}
 }
 
 }  // namespace mongo

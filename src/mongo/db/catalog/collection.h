@@ -94,7 +94,7 @@ struct CompactStats {
 };
 
 /**
- * common base class for generic CollectionImpl class and
+ * common base class for generic coll::Collection class and
  * for PartitionedCollection class
  */
 class Collection {
@@ -272,19 +272,24 @@ public:
         
 };
 
+
+// put upstream Collection class into 'coll' namespace to reduce name changes
+// in collection.* files
+namespace coll {
+
 /**
  * this is NOT safe through a yield right now
  * not sure if it will be, or what yet
  */
-class CollectionImpl : public Collection, CappedDocumentDeleteCallback, UpdateNotifier {
+class Collection : public mongo::Collection, CappedDocumentDeleteCallback, UpdateNotifier {
 public:
-    CollectionImpl(OperationContext* txn,
+    Collection(OperationContext* txn,
                const StringData& fullNS,
                CollectionCatalogEntry* details,  // does not own
                RecordStore* recordStore,         // does not own
                DatabaseCatalogEntry* dbce);      // does not own
 
-    virtual ~CollectionImpl();
+    virtual ~Collection();
 
     bool ok() const {
         return _magic == 1357924;
@@ -522,4 +527,6 @@ private:
     friend class IndexCatalog;
     friend class NamespaceDetails;
 };
+
+}
 }
