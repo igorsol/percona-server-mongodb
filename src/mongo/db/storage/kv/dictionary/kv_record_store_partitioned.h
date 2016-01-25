@@ -204,7 +204,7 @@ namespace mongo {
                 // This is only called with non-null locations
                 invariant(!loc.isNull());
                 it = _getPartitionIterator(loc.partitionId());
-                _rIt = (*it)->getIterator(_txn, loc);
+                advancePartition();
                 _savedLoc = RecordId();
             }
 
@@ -215,7 +215,8 @@ namespace mongo {
             void advancePartition() override {
                 invariant(!isLastPartition());
                 delete _rIt;
-                _rIt = (*++it)->getIterator(_txn);
+                _rIt = (*it)->getIterator(_txn);
+                ++it;
             }
 
         public:
@@ -226,7 +227,7 @@ namespace mongo {
                 if (!start.isNull()) {
                     it = _getPartitionIterator(start.partitionId());
                 }
-                _rIt = (*it)->getIterator(_txn, start);
+                advancePartition();
             }
 
         };
@@ -245,7 +246,7 @@ namespace mongo {
                 // This is only called with non-null locations
                 invariant(!loc.isNull());
                 it = _getPartitionIterator(loc.partitionId());
-                _rIt = (*it)->getIterator(_txn, loc, CollectionScanParams::BACKWARD);
+                advancePartition();
                 _savedLoc = RecordId();
             }
 
@@ -256,7 +257,8 @@ namespace mongo {
             void advancePartition() override {
                 invariant(!isLastPartition());
                 delete _rIt;
-                _rIt = (*++it)->getIterator(_txn, RecordId(), CollectionScanParams::BACKWARD);
+                _rIt = (*it)->getIterator(_txn, RecordId(), CollectionScanParams::BACKWARD);
+                ++it;
             }
 
         public:
@@ -267,7 +269,7 @@ namespace mongo {
                 if (!start.isNull()) {
                     it = _getPartitionIterator(start.partitionId());
                 }
-                _rIt = (*it)->getIterator(_txn, start, CollectionScanParams::BACKWARD);
+                advancePartition();
             }
 
         };
