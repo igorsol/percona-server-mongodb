@@ -383,6 +383,12 @@ std::vector<std::string> KVCatalog::getAllIdentsForDB(const StringData& db) cons
     return v;
 }
 
+static std::string getPartitionName(const StringData &ns, uint64_t partitionID) {
+    mongo::StackStringBuilder ss;
+    ss << ns << "$$p" << partitionID;
+    return ss.str();
+}
+
 std::vector<std::string> KVCatalog::getAllIdents(OperationContext* opCtx) const {
     std::vector<std::string> v;
 
@@ -402,6 +408,19 @@ std::vector<std::string> KVCatalog::getAllIdents(OperationContext* opCtx) const 
         while (sub.more()) {
             BSONElement e = sub.next();
             v.push_back(e.String());
+        }
+
+        // partition idents
+        e = obj["md"];
+        if (!e.isABSONObj())
+            continue;
+        e = e["partitions"];
+        if (!e.isABSONObj())
+            continue;
+        BSONObj partitions = e.Obj();
+        BSONObjIterator part(partitions);
+        while (part.more()) {
+            v.push_back(getPartitionName(obj["ident"].String(), part.next().numberLong()));
         }
     }
 
