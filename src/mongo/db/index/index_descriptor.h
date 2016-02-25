@@ -157,6 +157,11 @@ public:
         return _isIdIndex;
     }
 
+    // Is parent collection partitioned?
+    bool isPartitioned() const {
+        return _collection->isPartitioned();
+    }
+
     //
     // Properties that are Index-specific.
     //

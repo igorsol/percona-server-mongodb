@@ -30,6 +30,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "mongo/db/storage/kv/dictionary/kv_record_store_capped.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
+#include "mongo/db/storage/kv/dictionary/kv_sorted_data_partitioned.h"
 
 namespace mongo {
 
@@ -102,6 +103,9 @@ namespace mongo {
     Status KVEngineImpl::createSortedDataInterface(OperationContext* opCtx,
                                                    const StringData& ident,
                                                    const IndexDescriptor* desc) {
+        // For partitioned collections this is delayed
+        if (desc->isPartitioned())
+            return Status::OK();
         // Creating a sorted data impl is as simple as creating one with the given `ident'
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
@@ -113,6 +117,8 @@ namespace mongo {
     SortedDataInterface* KVEngineImpl::getSortedDataInterface(OperationContext* opCtx,
                                                               const StringData& ident,
                                                               const IndexDescriptor* desc) {
+        if (desc->isPartitioned())
+            return new KVSortedDataPartitioned(opCtx, desc);
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
         std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
