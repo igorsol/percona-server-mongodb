@@ -178,6 +178,12 @@ void KVCollectionCatalogEntry::storeNewPartitionMetadata(OperationContext* txn,
     _catalog->putMetaData(txn, ns().toString(), md);
 }
 
+void KVCollectionCatalogEntry::dropPartitionMetadata(OperationContext* txn, int64_t partitionId) {
+    MetaData md = _getMetaData(txn);
+    md.dropPartitionMetadata(partitionId);
+    _catalog->putMetaData(txn, ns().toString(), md);
+}
+
 BSONCollectionCatalogEntry::MetaData KVCollectionCatalogEntry::_getMetaData(
     OperationContext* txn) const {
     return _catalog->getMetaData(txn, ns().toString());

@@ -31,7 +31,7 @@ namespace mongo {
 
 class KVRecordStorePartitioned;
 
-class PartitionedCollection : public Collection
+class PartitionedCollection : public Collection, UpdateNotifier
 {
 public:
     PartitionedCollection(OperationContext* txn,
@@ -41,6 +41,8 @@ public:
                            DatabaseCatalogEntry* dbce);  // does not own
 
     Status initOnCreate(OperationContext* txn);
+
+    Status createPkIndexOnEmptyCollection(OperationContext* txn);
 
     ~PartitionedCollection();
 
@@ -228,21 +230,38 @@ public:
 
     // create new parttiion which never existed before
     Status createPartition(OperationContext* txn);
+    Status createPartition(OperationContext* txn, const BSONObj& newPivot, const BSONObj &partitionInfo);
 
     // add existing partition from metadata
     Status loadPartition(OperationContext* txn, BSONObj const& pmd);
 
+    // drop partitions
+    void dropPartition(OperationContext* txn, int64_t id);
+    void dropPartitionsLEQ(OperationContext* txn, const BSONObj &pivot);
+
+    uint64_t numPartitions() const;
+
 private:
+    Status recordStoreGoingToMove(OperationContext* txn,
+                                  const RecordId& oldLocation,
+                                  const char* oldBuffer,
+                                  size_t oldSize);
+
+    Status recordStoreGoingToUpdateInPlace(OperationContext* txn, const RecordId& loc);
+
+    void dropPartitionInternal(OperationContext* txn, int64_t id);
+    BSONObj getValidatedPKFromObject(const BSONObj &obj) const;
     Collection* getPrttnForRecordId(const RecordId& loc) const;
     Collection* getPrttnForDoc(const BSONObj& doc) const;
     BSONObj getPK(const BSONObj& doc) const;
+    bool getMaxPKForPartitionCap(OperationContext* txn, BSONObj &result) const;
 
     // return upper bound
     BSONObj getUpperBound() const;
 
     // partition data
     struct PartitionData {
-        const int64_t id; //partition ID
+        int64_t id; //partition ID
         BSONObj maxpk; // maximum PK value
         Collection* collection; //not owned
 
@@ -255,6 +274,8 @@ private:
               maxpk(_maxpk.Obj().getOwned()),
               collection(_collection) {}
     };
+
+    bool _enforceQuota(bool userEnforeQuota) const;
 
     int _magic;
 
@@ -276,5 +297,52 @@ private:
     mutable CursorManager _cursorManager;
 
 };
+
+inline void cloneBSONWithFieldChanged(BSONObjBuilder &b, const BSONObj &orig, const BSONElement &newElement, bool appendIfMissing = true) {
+    StringData fieldName = newElement.fieldName();
+    bool replaced = false;
+    for (BSONObjIterator it(orig); it.more(); it.next()) {
+        BSONElement e = *it;
+        if (fieldName == e.fieldName()) {
+            b.append(newElement);
+            replaced = true;
+        } else {
+            b.append(e);
+        }
+    }
+    if (!replaced && appendIfMissing) {
+        b.append(newElement);
+    }
+}
+
+inline BSONObj cloneBSONWithFieldChanged(const BSONObj &orig, const BSONElement &newElement, bool appendIfMissing = true) {
+    BSONObjBuilder b(orig.objsize());
+    cloneBSONWithFieldChanged(b, orig, newElement, appendIfMissing);
+    return b.obj();
+}
+
+template<typename T>
+void cloneBSONWithFieldChanged(BSONObjBuilder &b, const BSONObj &orig, const StringData &fieldName, const T &newValue, bool appendIfMissing = true) {
+    bool replaced = false;
+    for (BSONObjIterator it(orig); it.more(); it.next()) {
+        BSONElement e = *it;
+        if (fieldName == e.fieldName()) {
+            b.append(fieldName, newValue);
+            replaced = true;
+        } else {
+            b.append(e);
+        }
+    }
+    if (!replaced && appendIfMissing) {
+        b.append(fieldName, newValue);
+    }
+}
+
+template<typename T>
+BSONObj cloneBSONWithFieldChanged(const BSONObj &orig, const StringData &fieldName, const T &newValue, bool appendIfMissing = true) {
+    BSONObjBuilder b(orig.objsize());
+    cloneBSONWithFieldChanged(b, orig, fieldName, newValue, appendIfMissing);
+    return b.obj();
+}
 
 }

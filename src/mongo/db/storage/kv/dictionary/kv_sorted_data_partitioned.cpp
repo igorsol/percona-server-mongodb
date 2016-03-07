@@ -22,16 +22,24 @@ Copyright (c) 2006, 2016, Percona and/or its affiliates. All rights reserved.
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/base/checked_cast.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_partitioned.h"
+#include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
+#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 
 namespace mongo {
 
     KVSortedDataPartitioned::KVSortedDataPartitioned(OperationContext* opCtx,
+                                                     KVEngineImpl* kvEngine,
+                                                     const StringData& ident,
                                                      const IndexDescriptor* desc)
-        : _ordering(Ordering::make(desc ? desc->keyPattern() : BSONObj()))
+        : _ordering(Ordering::make(desc ? desc->keyPattern() : BSONObj())),
+          _kvEngine(kvEngine),
+          _ident(ident.toString())
     {
     }
 
@@ -121,6 +129,28 @@ namespace mongo {
                                                     double scale) const {
         //TODO: what format to use here?
         return true;
+    }
+
+    bool KVSortedDataPartitioned::getMaxKeyFromLastPartition(OperationContext* txn, BSONObj &result) const {
+        boost::scoped_ptr<SortedDataInterface::Cursor> cursor(_partitions.back()->newCursor(txn, -1));
+        if (cursor->isEOF())
+            return false;
+        result = cursor->getKey();
+        return true;
+    }
+
+    void KVSortedDataPartitioned::dropPartition(OperationContext* txn, int64_t id) {
+        for (auto i = _partitionIDs.begin(); i != _partitionIDs.end(); ++i)
+        {
+            if (*i == id) {
+                _kvEngine->dropIdent(txn, getPartitionName(_ident, id));
+                auto sdi = _partitions.begin() + (i - _partitionIDs.begin());
+                delete *sdi;
+                _partitions.erase(sdi);
+                _partitionIDs.erase(i);
+                break;
+            }
+        }
     }
 
     SortedDataInterface* KVSortedDataPartitioned::ptnForRecordId(const RecordId& loc) const {

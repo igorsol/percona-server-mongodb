@@ -16,7 +16,7 @@ struct PartitionMetaData {
         : obj(pmd.getOwned()), id(obj["_id"].numberLong()) {}
 
     BSONObj obj;
-    const int64_t id; // parsed value of partition id
+    int64_t id; // parsed value of partition id
 };
 
 }

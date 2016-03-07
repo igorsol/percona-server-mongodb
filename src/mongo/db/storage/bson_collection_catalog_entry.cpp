@@ -265,4 +265,13 @@ void BSONCollectionCatalogEntry::MetaData::storeNewPartitionMetadata(BSONObj con
     partitions.emplace_back(b.obj());
 }
 
+void BSONCollectionCatalogEntry::MetaData::dropPartitionMetadata(int64_t partitionId) {
+    for (auto it = partitions.begin(); it != partitions.end(); ++it) {
+        if (it->id == partitionId) {
+            partitions.erase(it);
+            break;
+        }
+    }
+}
+
 }

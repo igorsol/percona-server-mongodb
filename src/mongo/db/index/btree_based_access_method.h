@@ -113,6 +113,16 @@ public:
     // XXX: consider migrating callers to use IndexCursor instead
     virtual RecordId findSingle(OperationContext* txn, const BSONObj& key) const;
 
+    // Overridden methods of PartitionedIndexAccessMethod
+
+    bool getMaxKeyFromLastPartition(OperationContext* txn, BSONObj &result) const {
+        return _newInterface->getMaxKeyFromLastPartition(txn, result);
+    }
+
+    void dropPartition(OperationContext* txn, int64_t id) {
+        _newInterface->dropPartition(txn, id);
+    }
+
 protected:
     // Friends who need getKeys.
     friend class BtreeBasedBulkAccessMethod;

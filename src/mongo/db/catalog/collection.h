@@ -103,6 +103,10 @@ public:
     // used to create first partition in partitioned collection
     virtual Status initOnCreate(OperationContext* txn) { return Status::OK(); }
 
+    // called after creating Id index when collection is created for the first time
+    // used to create primary key index for partitioned collection
+    virtual Status createPkIndexOnEmptyCollection(OperationContext* txn) { return Status::OK(); }
+
     virtual ~Collection() {}
 
     virtual bool ok() const = 0;
@@ -264,7 +268,7 @@ public:
 
     virtual uint64_t getIndexSize(OperationContext* opCtx, BSONObjBuilder* details = NULL, int scale = 1) = 0;
 
-    template <class T> T *as() const {
+    template <class T> T *as() {
         T *subclass = dynamic_cast<T *>(this);
         massert(19176, "bug: failed to dynamically cast Collection to desired subclass", subclass != NULL);
         return subclass;

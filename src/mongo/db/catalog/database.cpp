@@ -526,6 +526,9 @@ Collection* Database::createCollection(OperationContext* txn,
             }
         }
 
+        // create primary key index on partititoned collections
+        uassertStatusOK(collection->createPkIndexOnEmptyCollection(txn));
+
         if (nss.isSystem()) {
             authindex::createSystemIndexes(txn, collection);
         }

@@ -27,6 +27,7 @@ Copyright (c) 2006, 2016, Percona and/or its affiliates. All rights reserved.
 namespace mongo {
 
     class IndexDescriptor;
+    class KVEngineImpl;
 
     /**
      * Dummy implementation for now.  We'd need a KVDictionaryBuilder to
@@ -62,7 +63,7 @@ namespace mongo {
         friend class KVSDIPartitionedCursor;
 
     public:
-        KVSortedDataPartitioned( OperationContext* opCtx, const IndexDescriptor *desc );
+        KVSortedDataPartitioned( OperationContext* opCtx, KVEngineImpl* kvEngine, const StringData& ident, const IndexDescriptor *desc );
 
         virtual ~KVSortedDataPartitioned();
 
@@ -92,11 +93,22 @@ namespace mongo {
 
         virtual bool appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const;
 
+        // additional methods for partitoned collections
+
+        bool getMaxKeyFromLastPartition(OperationContext* txn, BSONObj &result) const override;
+
+        void dropPartition(OperationContext* txn, int64_t id) override;
+
     private:
         const Ordering _ordering;
 
         // get SortedDataInterface* for given RecordId
         SortedDataInterface* ptnForRecordId(const RecordId& loc) const;
+
+        // used to create/drop idents
+        KVEngineImpl* _kvEngine;
+
+        const std::string _ident;
 
         // vector storing the ids of the partitions
         std::vector<int64_t> _partitionIDs;

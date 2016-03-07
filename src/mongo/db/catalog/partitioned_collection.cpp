@@ -24,10 +24,18 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "mongo/platform/basic.h"
 
-#include "mongo/db/catalog/collection_catalog_entry.h"
 #include "mongo/db/catalog/partitioned_collection.h"
+
+#include "mongo/base/counter.h"
+#include "mongo/base/owned_pointer_map.h"
+#include "mongo/db/curop.h"
+#include "mongo/db/catalog/collection_catalog_entry.h"
+#include "mongo/db/index/index_access_method.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
+#include "mongo/db/storage/mmap_v1/mmap_v1_options.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 
+#include "mongo/util/log.h"
 #include <signal.h>  //TODO: remove when SIGTRAP debugging will be finished
 
 namespace mongo {
@@ -70,6 +78,13 @@ PartitionedCollection::PartitionedCollection(OperationContext* txn,
 
 Status PartitionedCollection::initOnCreate(OperationContext* txn) {
     return createPartition(txn);
+}
+
+Status PartitionedCollection::createPkIndexOnEmptyCollection(OperationContext* txn) {
+    // if _pkPattern equals standard Id index then no need to create another one
+    if (_pkPattern == BSON("_id" << 1))
+        return Status::OK();
+    return _indexCatalog.createIndexOnEmptyCollection(txn, _pkPattern);
 }
 
 PartitionedCollection::~PartitionedCollection() {
@@ -185,6 +200,10 @@ RecordFetcher* PartitionedCollection::documentNeedsFetch(OperationContext* txn, 
     return coll->documentNeedsFetch(txn, loc);
 }
 
+namespace coll {
+extern Counter64 moveCounter;
+}
+
 StatusWith<RecordId> PartitionedCollection::updateDocument(OperationContext* txn,
                                                 const RecordId& oldLocation,
                                                 const Snapshotted<BSONObj>& objOld,
@@ -192,19 +211,120 @@ StatusWith<RecordId> PartitionedCollection::updateDocument(OperationContext* txn
                                                 bool enforceQuota,
                                                 bool indexesAffected,
                                                 OpDebug* debug) {
-    raise(SIGTRAP); //TODO: implement updateDocument
-    return StatusWith<RecordId>(
-        ErrorCodes::InternalError, "::updateDocument is not implemented yet");
+    dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IX));
+    invariant(objOld.snapshotId() == txn->recoveryUnit()->getSnapshotId());
+
+    SnapshotId sid = txn->recoveryUnit()->getSnapshotId();
+
+    BSONElement oldId = objOld.value()["_id"];
+    if (!oldId.eoo() && (oldId != objNew["_id"]))
+        return StatusWith<RecordId>(
+            ErrorCodes::InternalError, "in Collection::updateDocument _id mismatch", 13596);
+
+    // At the end of this step, we will have a map of UpdateTickets, one per index, which
+    // represent the index updates needed to be done, based on the changes between objOld and
+    // objNew.
+    OwnedPointerMap<IndexDescriptor*, UpdateTicket> updateTickets;
+    if (indexesAffected) {
+        IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, true);
+        while (ii.more()) {
+            IndexDescriptor* descriptor = ii.next();
+            IndexAccessMethod* iam = _indexCatalog.getIndex(descriptor);
+
+            InsertDeleteOptions options;
+            options.logIfError = false;
+            options.dupsAllowed =
+                !(KeyPattern::isIdKeyPattern(descriptor->keyPattern()) || descriptor->unique()) ||
+                repl::getGlobalReplicationCoordinator()->shouldIgnoreUniqueIndex(descriptor);
+            UpdateTicket* updateTicket = new UpdateTicket();
+            updateTickets.mutableMap()[descriptor] = updateTicket;
+            Status ret = iam->validateUpdate(
+                txn, objOld.value(), objNew, oldLocation, options, updateTicket);
+            if (!ret.isOK()) {
+                return StatusWith<RecordId>(ret);
+            }
+        }
+    }
+
+    // This can call back into Collection::recordStoreGoingToMove.  If that happens, the old
+    // object is removed from all indexes.
+    StatusWith<RecordId> newLocation = _recordStore->updateRecord(
+        txn, oldLocation, objNew.objdata(), objNew.objsize(), _enforceQuota(enforceQuota), this);
+
+    if (!newLocation.isOK()) {
+        return newLocation;
+    }
+
+    // At this point, the old object may or may not still be indexed, depending on if it was
+    // moved. If the object did move, we need to add the new location to all indexes.
+    if (newLocation.getValue() != oldLocation) {
+        if (debug) {
+            if (debug->nmoved == -1)  // default of -1 rather than 0
+                debug->nmoved = 1;
+            else
+                debug->nmoved += 1;
+        }
+
+        Status s = _indexCatalog.indexRecord(txn, objNew, newLocation.getValue());
+        if (!s.isOK())
+            return StatusWith<RecordId>(s);
+        invariant(sid == txn->recoveryUnit()->getSnapshotId());
+        return newLocation;
+    }
+
+    // Object did not move.  We update each index with each respective UpdateTicket.
+
+    if (debug)
+        debug->keyUpdates = 0;
+
+    if (indexesAffected) {
+        IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, true);
+        while (ii.more()) {
+            IndexDescriptor* descriptor = ii.next();
+            IndexAccessMethod* iam = _indexCatalog.getIndex(descriptor);
+
+            int64_t updatedKeys;
+            Status ret = iam->update(txn, *updateTickets.mutableMap()[descriptor], &updatedKeys);
+            if (!ret.isOK())
+                return StatusWith<RecordId>(ret);
+            if (debug)
+                debug->keyUpdates += updatedKeys;
+        }
+    }
+
+    invariant(sid == txn->recoveryUnit()->getSnapshotId());
+    return newLocation;
 }
+
+Status PartitionedCollection::recordStoreGoingToMove(OperationContext* txn,
+                                          const RecordId& oldLocation,
+                                          const char* oldBuffer,
+                                          size_t oldSize) {
+    coll::moveCounter.increment();
+    _cursorManager.invalidateDocument(txn, oldLocation, INVALIDATION_DELETION);
+    _indexCatalog.unindexRecord(txn, BSONObj(oldBuffer), oldLocation, true);
+    return Status::OK();
+}
+
+Status PartitionedCollection::recordStoreGoingToUpdateInPlace(OperationContext* txn, const RecordId& loc) {
+    // Broadcast the mutation so that query results stay correct.
+    _cursorManager.invalidateDocument(txn, loc, INVALIDATION_MUTATION);
+    return Status::OK();
+}
+
 
 Status PartitionedCollection::updateDocumentWithDamages(OperationContext* txn,
                                              const RecordId& loc,
                                              const Snapshotted<RecordData>& oldRec,
                                              const char* damageSource,
                                              const mutablebson::DamageVector& damages) {
-    raise(SIGTRAP); //TODO: implement updateDocumentWithDamages
-    return Status(
-        ErrorCodes::InternalError, "::updateDocumentWithDamages is not implemented yet");
+    dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IX));
+    invariant(oldRec.snapshotId() == txn->recoveryUnit()->getSnapshotId());
+
+    // Broadcast the mutation so that query results stay correct.
+    _cursorManager.invalidateDocument(txn, loc, INVALIDATION_MUTATION);
+
+    return _recordStore->updateWithDamages(txn, loc, oldRec.value(), damageSource, damages);
 }
 
 //TODO: move to collection_compact.cpp
@@ -231,9 +351,54 @@ StatusWith<CompactStats> PartitionedCollection::compact(OperationContext* txn,
  * 4) re-write indexes
  */
 Status PartitionedCollection::truncate(OperationContext* txn) {
-    raise(SIGTRAP); //TODO: implement truncate
-    return Status(
-        ErrorCodes::InternalError, "::truncate is not implemented yet");
+    dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_X));
+    massert(19190, "index build in progress", _indexCatalog.numIndexesInProgress(txn) == 0);
+
+    // 1) store index specs
+    vector<BSONObj> indexSpecs;
+    {
+        IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, false);
+        while (ii.more()) {
+            const IndexDescriptor* idx = ii.next();
+            indexSpecs.push_back(idx->infoObj().getOwned());
+        }
+    }
+
+    // 2) drop indexes
+    Status status = _indexCatalog.dropAllIndexes(txn, true);
+    if (!status.isOK())
+        return status;
+    _cursorManager.invalidateAll(false);
+    _infoCache.reset(txn);
+
+    // 3) truncate record store
+    status = _recordStore->truncate(txn);
+    if (!status.isOK())
+        return status;
+
+    // 4) re-create indexes
+    for (size_t i = 0; i < indexSpecs.size(); i++) {
+        status = _indexCatalog.createIndexOnEmptyCollection(txn, indexSpecs[i]);
+        if (!status.isOK())
+            return status;
+    }
+
+    return Status::OK();
+}
+
+namespace {
+class MyValidateAdaptor : public ValidateAdaptor {
+public:
+    virtual ~MyValidateAdaptor() {}
+
+    virtual Status validate(const RecordData& record, size_t* dataSize) {
+        BSONObj obj = record.toBson();
+        const Status status = validateBSON(obj.objdata(), obj.objsize());
+        if (status.isOK())
+            *dataSize = obj.objsize();
+        return Status::OK();
+    }
+};
 }
 
 Status PartitionedCollection::validate(OperationContext* txn,
@@ -241,22 +406,111 @@ Status PartitionedCollection::validate(OperationContext* txn,
                             bool scanData,
                             ValidateResults* results,
                             BSONObjBuilder* output) {
-    raise(SIGTRAP); //TODO: implement validate
-    return Status(
-        ErrorCodes::InternalError, "::validate is not implemented yet");
+    dassert(txn->lockState()->isCollectionLockedForMode(ns().toString(), MODE_IS));
+
+    MyValidateAdaptor adaptor;
+    Status status = _recordStore->validate(txn, full, scanData, &adaptor, results, output);
+    if (!status.isOK())
+        return status;
+
+    {  // indexes
+        output->append("nIndexes", _indexCatalog.numIndexesReady(txn));
+        int idxn = 0;
+        try {
+            // Only applicable when 'full' validation is requested.
+            boost::scoped_ptr<BSONObjBuilder> indexDetails(full ? new BSONObjBuilder() : NULL);
+            BSONObjBuilder indexes;  // not using subObjStart to be exception safe
+
+            IndexCatalog::IndexIterator i = _indexCatalog.getIndexIterator(txn, false);
+            while (i.more()) {
+                const IndexDescriptor* descriptor = i.next();
+                log(LogComponent::kIndex) << "validating index " << descriptor->indexNamespace()
+                                          << endl;
+                IndexAccessMethod* iam = _indexCatalog.getIndex(descriptor);
+                invariant(iam);
+
+                boost::scoped_ptr<BSONObjBuilder> bob(
+                    indexDetails.get() ? new BSONObjBuilder(indexDetails->subobjStart(
+                                             descriptor->indexNamespace()))
+                                       : NULL);
+
+                int64_t keys;
+                iam->validate(txn, full, &keys, bob.get());
+                indexes.appendNumber(descriptor->indexNamespace(), static_cast<long long>(keys));
+
+                if (bob) {
+                    BSONObj obj = bob->done();
+                    BSONElement valid = obj["valid"];
+                    if (valid.ok() && !valid.trueValue()) {
+                        results->valid = false;
+                    }
+                }
+                idxn++;
+            }
+
+            output->append("keysPerIndex", indexes.done());
+            if (indexDetails.get()) {
+                output->append("indexDetails", indexDetails->done());
+            }
+        } catch (DBException& exc) {
+            string err = str::stream() << "exception during index validate idxn "
+                                       << BSONObjBuilder::numStr(idxn) << ": " << exc.toString();
+            results->errors.push_back(err);
+            results->valid = false;
+        }
+    }
+
+    return Status::OK();
 }
 
 Status PartitionedCollection::touch(OperationContext* txn,
                          bool touchData,
                          bool touchIndexes,
                          BSONObjBuilder* output) const {
-    raise(SIGTRAP); //TODO: implement touch
-    return Status(
-        ErrorCodes::InternalError, "::touch is not implemented yet");
+    if (touchData) {
+        BSONObjBuilder b;
+        Status status = _recordStore->touch(txn, &b);
+        if (!status.isOK())
+            return status;
+        output->append("data", b.obj());
+    }
+
+    if (touchIndexes) {
+        Timer t;
+        IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, false);
+        while (ii.more()) {
+            const IndexDescriptor* desc = ii.next();
+            const IndexAccessMethod* iam = _indexCatalog.getIndex(desc);
+            Status status = iam->touch(txn);
+            if (!status.isOK())
+                return status;
+        }
+
+        output->append("indexes",
+                       BSON("num" << _indexCatalog.numIndexesTotal(txn) << "millis" << t.millis()));
+    }
+
+    return Status::OK();
 }
 
 void PartitionedCollection::temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive) {
     massert(19175, "partitioned collection cannot be capped", isCapped());
+}
+
+bool PartitionedCollection::_enforceQuota(bool userEnforeQuota) const {
+    if (!userEnforeQuota)
+        return false;
+
+    if (!mmapv1GlobalOptions.quota)
+        return false;
+
+    if (_ns.db() == "local")
+        return false;
+
+    if (_ns.isSpecial())
+        return false;
+
+    return true;
 }
 
 uint64_t PartitionedCollection::numRecords(OperationContext* txn) const {
@@ -276,27 +530,25 @@ uint64_t PartitionedCollection::dataSize(OperationContext* txn) const {
 }
 
 uint64_t PartitionedCollection::getIndexSize(OperationContext* opCtx, BSONObjBuilder* details, int scale) {
-    raise(SIGTRAP); //TODO: implement getIndexSize
-    return 0;
-//    IndexCatalog* idxCatalog = getIndexCatalog();
-//
-//    IndexCatalog::IndexIterator ii = idxCatalog->getIndexIterator(opCtx, true);
-//
-//    uint64_t totalSize = 0;
-//
-//    while (ii.more()) {
-//        IndexDescriptor* d = ii.next();
-//        IndexAccessMethod* iam = idxCatalog->getIndex(d);
-//
-//        long long ds = iam->getSpaceUsedBytes(opCtx);
-//
-//        totalSize += ds;
-//        if (details) {
-//            details->appendNumber(d->indexName(), ds / scale);
-//        }
-//    }
-//
-//    return totalSize;
+    IndexCatalog* idxCatalog = getIndexCatalog();
+
+    IndexCatalog::IndexIterator ii = idxCatalog->getIndexIterator(opCtx, true);
+
+    uint64_t totalSize = 0;
+
+    while (ii.more()) {
+        IndexDescriptor* d = ii.next();
+        IndexAccessMethod* iam = idxCatalog->getIndex(d);
+
+        long long ds = iam->getSpaceUsedBytes(opCtx);
+
+        totalSize += ds;
+        if (details) {
+            details->appendNumber(d->indexName(), ds / scale);
+        }
+    }
+
+    return totalSize;
 }
 
 
@@ -331,7 +583,6 @@ Collection* PartitionedCollection::getPrttnForDoc(const BSONObj& doc) const {
         return _partitions.back().collection;
     }
     // search through the whole list
-    //TODO: ensure that _pkPattern contains what is required by woCompare
     auto low = std::lower_bound(_partitions.begin(), _partitions.end(), pk,
                                 [this](const PartitionData& pd, const BSONObj& pk){
                                     return pd.maxpk.woCompare(pk, this->_pkPattern) < 0;});
@@ -352,6 +603,14 @@ BSONObj PartitionedCollection::getPK(const BSONObj& doc) const {
     return result.obj();
 }
 
+bool PartitionedCollection::getMaxPKForPartitionCap(OperationContext* txn, BSONObj &result) const {
+    auto desc = _indexCatalog.findIndexByKeyPattern(txn, _pkPattern);
+    invariant(desc);
+    auto iam = _indexCatalog.getIndex(desc);
+    invariant(iam);
+    return iam->getMaxKeyFromLastPartition(txn, result);
+}
+
 Status PartitionedCollection::createPartition(OperationContext* txn) {
     int64_t id = 0;
     BSONObj maxpkforprev;
@@ -361,7 +620,9 @@ Status PartitionedCollection::createPartition(OperationContext* txn) {
         // check if we reached maximum partitions limit
         uassert(19177, "Cannot create partition. Too many partitions already exist.",
                 id != _partitions.front().id);
-        //TODO: get maxpkforprev from last partition
+        // get maxpkforprev from last partition
+        bool foundLast = getMaxPKForPartitionCap(txn, maxpkforprev);
+        uassert(19189, "can only cap a partition with no pivot if it is non-empty", foundLast);
     }
     StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
     if (!prs.isOK())
@@ -376,6 +637,11 @@ Status PartitionedCollection::createPartition(OperationContext* txn) {
     return Status::OK();
 }
 
+Status PartitionedCollection::createPartition(OperationContext*txn, const BSONObj& newPivot, const BSONObj &partitionInfo) {
+    //TODO: implement
+    return Status::OK();
+}
+
 // Input: BSONObj with partition metadata
 // - partition Id
 // - maximim value of PK
@@ -387,6 +653,48 @@ Status PartitionedCollection::loadPartition(OperationContext* txn, BSONObj const
     Collection* collection = new coll::Collection(txn, _ns.ns(), _cce, prs.getValue(), _dbce);
     _partitions.emplace_back(id, pmd["max"], collection);
     return Status::OK();
+}
+
+void PartitionedCollection::dropPartitionInternal(OperationContext* txn, int64_t id) {
+    for (auto it = _partitions.begin(); it != _partitions.end(); ++it) {
+        if (it->id == id) {
+            _partitions.erase(it);
+            break;
+        }
+    }
+    _cce->dropPartitionMetadata(txn, id);
+
+    IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, true);
+    while (ii.more()) {
+        IndexDescriptor* descriptor = ii.next();
+        IndexAccessMethod* iam = _indexCatalog.getIndex(descriptor);
+        iam->dropPartition(txn, id);
+    }
+
+    _recordStore->dropPartition(txn, id);
+}
+
+void PartitionedCollection::dropPartition(OperationContext* txn, int64_t id) {
+    uassert(19188, "cannot drop partition if only one exists", numPartitions() > 1);
+    dropPartitionInternal(txn, id);
+}
+
+BSONObj PartitionedCollection::getValidatedPKFromObject(const BSONObj &obj) const {
+    //TODO: this is stub implementattion
+    const BSONObj pk = obj.getOwned();
+    return pk;
+}
+
+void PartitionedCollection::dropPartitionsLEQ(OperationContext* txn, const BSONObj &pivot) {
+    BSONObj key = getValidatedPKFromObject(pivot);
+    while (numPartitions() > 1 &&
+           key.woCompare(_partitions[0].maxpk, _pkPattern) >= 0) {
+        dropPartition(txn, _partitions[0].id);
+    }
+}
+
+uint64_t PartitionedCollection::numPartitions() const {
+    return _partitions.size();
 }
 
 BSONObj PartitionedCollection::getUpperBound() const {

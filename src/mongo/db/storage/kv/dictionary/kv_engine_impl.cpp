@@ -118,7 +118,7 @@ namespace mongo {
                                                               const StringData& ident,
                                                               const IndexDescriptor* desc) {
         if (desc->isPartitioned())
-            return new KVSortedDataPartitioned(opCtx, desc);
+            return new KVSortedDataPartitioned(opCtx, this, ident, desc);
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
         std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),

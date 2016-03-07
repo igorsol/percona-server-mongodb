@@ -85,7 +85,9 @@ public:
     void storeNewPartitionMetadata(OperationContext* txn,
                                    BSONObj const& maxpkforprev,
                                    int64_t partitionId,
-                                   BSONObj const& maxpk);
+                                   BSONObj const& maxpk) override;
+
+    void dropPartitionMetadata(OperationContext* txn, int64_t partitionId) override;
 
     RecordStore* getRecordStore() {
         return _recordStore.get();

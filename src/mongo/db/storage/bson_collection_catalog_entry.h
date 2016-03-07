@@ -108,6 +108,8 @@ public:
          */
         void storeNewPartitionMetadata(BSONObj const& maxpkforprev, int64_t partitionId, BSONObj const& maxpk);
 
+        void dropPartitionMetadata(int64_t partitionId);
+
         std::string ns;
         CollectionOptions options;
         std::vector<IndexMetaData> indexes;

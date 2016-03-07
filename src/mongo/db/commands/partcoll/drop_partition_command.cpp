@@ -21,7 +21,12 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 ======= */
 
 #include "mongo/db/auth/action_type.h"
+#include "mongo/db/catalog/partitioned_collection.h"
+#include "mongo/db/client.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/ops/insert.h"
+#include "mongo/db/repl/oplog.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 
 #include "drop_partition_command.h"
 
@@ -44,7 +49,7 @@ namespace mongo {
         }
 
         bool DropPartitionCommand::run(mongo::OperationContext* txn,
-                                        const std::string &db,
+                                        const std::string &dbname,
                                         BSONObj &cmdObj,
                                         int options,
                                         std::string &errmsg,
@@ -55,9 +60,59 @@ namespace mongo {
                 return false;
             }
 
-            //TODO: this implementation is no-op
-            errmsg = "Not implemented yet";
-            return false;
+            std::string coll = cmdObj[ "dropPartition" ].valuestrsafe();
+            uassert( 19184, "dropPartition must specify a collection", !coll.empty() );
+            std::string ns = dbname + "." + coll;
+            BSONElement force = cmdObj["force"];
+            bool isOplogNS = (strcmp(ns.c_str(), repl::rsoplog) == 0);
+            uassert( 19185, "cannot manually drop partition on oplog or oplog.refs", force.trueValue() || !isOplogNS);
+
+            ScopedTransaction transaction(txn, MODE_IX);
+            AutoGetDb autoDb(txn, dbname, MODE_X);
+
+            if (!fromRepl &&
+                !repl::getGlobalReplicationCoordinator()->canAcceptWritesForDatabase(dbname)) {
+                return appendCommandStatus(result,
+                                           Status(ErrorCodes::NotMaster,
+                                                  str::stream()
+                                                      << "Not primary while adding partition to " << ns));
+            }
+
+            Database* const db = autoDb.getDb();
+
+            if (!db) {
+                return appendCommandStatus(result,
+                                           Status(ErrorCodes::NamespaceNotFound,
+                                                  str::stream() << "database " << dbname << " does not exist"));
+            }
+
+            Collection *cl = db->getCollection( ns );
+            uassert( 19186, "dropPartition no such collection", cl );
+            uassert( 19187, "collection must be partitioned", cl->isPartitioned() );
+
+            BSONElement idElem = cmdObj["id"];
+            BSONElement maxElem = cmdObj["max"];
+            if (idElem.ok() ==  maxElem.ok()) {
+                errmsg = "must provide either an id or a max key of data to be dropped";
+                return false;
+            }
+            else if (idElem.ok()) {
+                if (!idElem.isNumber()) {
+                    errmsg = "invalid id";
+                    return false;
+                }
+                PartitionedCollection *pc = cl->as<PartitionedCollection>();
+                uint64_t partitionID = idElem.numberLong();
+                pc->dropPartition(txn, partitionID);
+            }
+            else {
+                verify(maxElem.ok());
+                BSONObj pivot = maxElem.embeddedObjectUserCheck();
+                fixDocumentForInsert(pivot);
+                PartitionedCollection *pc = cl->as<PartitionedCollection>();
+                pc->dropPartitionsLEQ(txn, pivot);
+            }
+            return true;
         }
 
     }

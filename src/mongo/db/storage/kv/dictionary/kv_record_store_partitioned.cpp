@@ -26,22 +26,11 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
+#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 
 #include "mongo/util/log.h"
 
 namespace mongo {
-
-    std::string getMetaCollectionName(const StringData &ns) {
-        mongo::StackStringBuilder ss;
-        ss << ns << "$$meta";
-        return ss.str();
-    }
-
-    std::string getPartitionName(const StringData &ns, uint64_t partitionID) {
-        mongo::StackStringBuilder ss;
-        ss << ns << "$$p" << partitionID;
-        return ss.str();
-    }
 
     KVRecordStorePartitioned::KVRecordStorePartitioned(OperationContext* opCtx,
                                                        KVEngineImpl* kvEngine,
@@ -60,7 +49,7 @@ namespace mongo {
         _partitionOptions._partitions = nullptr;
     }
 
-    StatusWith<RecordStore*> KVRecordStorePartitioned::createPartition(OperationContext* txn, uint64_t partitionID) {
+    StatusWith<RecordStore*> KVRecordStorePartitioned::createPartition(OperationContext* txn, int64_t partitionID) {
         std::string const partIdent = getPartitionName(_ident, partitionID);
         Status status = _kvEngine->createRecordStore(txn, ns(), partIdent, _partitionOptions);
         if (!status.isOK())
@@ -71,6 +60,20 @@ namespace mongo {
         _partitions.push_back(rs);
         //TODO: do we need to registerChange here (see KVDatabaseCatalogEntry::createCollection)
         return StatusWith<RecordStore*>(rs);
+    }
+
+    void KVRecordStorePartitioned::dropPartition(OperationContext* txn, int64_t partitionID) {
+        for (auto i = _partitionIDs.begin(); i != _partitionIDs.end(); ++i)
+        {
+            if (*i == partitionID) {
+                _kvEngine->dropIdent(txn, getPartitionName(_ident, partitionID));
+                auto prs = _partitions.begin() + (i - _partitionIDs.begin());
+                delete *prs;
+                _partitions.erase(prs);
+                _partitionIDs.erase(i);
+                break;
+            }
+        }
     }
 
     KVRecordStorePartitioned::~KVRecordStorePartitioned() {
