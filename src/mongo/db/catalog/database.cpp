@@ -170,7 +170,7 @@ Collection* Database::makeCollectionInstance(OperationContext* txn, const String
 
     Collection* c = nullptr;
     if (!cce->isPartitioned(txn)) {
-        c = new coll::Collection(txn, ns, cce.release(), dbce->getRecordStore(ns), dbce);
+        c = new Collection(txn, ns, cce.release(), dbce->getRecordStore(ns), dbce);
     } else {
         c = new PartitionedCollection(txn, ns, cce.release(), dbce->getRecordStore(ns), dbce);
     }

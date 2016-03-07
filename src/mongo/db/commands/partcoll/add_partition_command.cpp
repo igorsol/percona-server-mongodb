@@ -93,24 +93,23 @@ namespace mongo {
             uassert( 19182, "collection must be partitioned", cl->isPartitioned() );
             BSONElement pivotElement = cmdObj["newMax"];
             BSONElement infoElement = cmdObj["info"];
-            PartitionedCollection *pc = cl->as<PartitionedCollection>();
             WriteUnitOfWork wunit(txn);
             if (pivotElement.ok()) {
                 BSONObj pivot = pivotElement.embeddedObjectUserCheck();
                 fixDocumentForInsert(pivot);
-                pc->createPartition(txn, pivot, infoElement.ok() ? infoElement.embeddedObjectUserCheck() : BSONObj());
+                cl->createPartition(txn, pivot, infoElement.ok() ? infoElement.embeddedObjectUserCheck() : BSONObj());
             }
             else {
-                pc->createPartition(txn);
+                cl->createPartition(txn);
             }
             // now that we have added the partition, take care of the oplog
-            uint64_t numPartitions = pc->numPartitions();
+            uint64_t numPartitions = cl->numPartitions();
             massert(19183, str::stream() << "bad numPartitions after adding a partition " << numPartitions, numPartitions > 1);
 
             if (!fromRepl) {
                 uint64_t numPartitions;
                 BSONArray partitionArray;
-                pc->getCatalogEntry()->getPartitionInfo(txn, &numPartitions, &partitionArray);
+                cl->getCatalogEntry()->getPartitionInfo(txn, &numPartitions, &partitionArray);
                 std::vector<BSONElement> v;
                 partitionArray.elems(v);
                 

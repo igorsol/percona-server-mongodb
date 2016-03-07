@@ -84,13 +84,12 @@ std::string CompactOptions::toString() const {
 }
 
 // ----
-namespace coll {
 
 Collection::Collection(OperationContext* txn,
-                               const StringData& fullNS,
-                               CollectionCatalogEntry* details,
-                               RecordStore* recordStore,
-                               DatabaseCatalogEntry* dbce)
+                       const StringData& fullNS,
+                       CollectionCatalogEntry* details,
+                       RecordStore* recordStore,
+                       DatabaseCatalogEntry* dbce)
     : _ns(fullNS),
       _details(details),
       _recordStore(recordStore),
@@ -632,7 +631,5 @@ Status Collection::touch(OperationContext* txn,
     }
 
     return Status::OK();
-}
-
 }
 }

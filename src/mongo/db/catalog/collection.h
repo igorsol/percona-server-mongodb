@@ -37,6 +37,7 @@
 #include "mongo/db/catalog/collection_info_cache.h"
 #include "mongo/db/catalog/cursor_manager.h"
 #include "mongo/db/catalog/index_catalog.h"
+#include "mongo/db/catalog/partitioned_collection_itf.h"
 #include "mongo/db/exec/collection_scan_common.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/record_id.h"
@@ -94,198 +95,11 @@ struct CompactStats {
 };
 
 /**
- * common base class for generic coll::Collection class and
- * for PartitionedCollection class
- */
-class Collection {
-public:
-    // called after constructor when collection is created for the first time
-    // used to create first partition in partitioned collection
-    virtual Status initOnCreate(OperationContext* txn) { return Status::OK(); }
-
-    // called after creating Id index when collection is created for the first time
-    // used to create primary key index for partitioned collection
-    virtual Status createPkIndexOnEmptyCollection(OperationContext* txn) { return Status::OK(); }
-
-    virtual ~Collection() {}
-
-    virtual bool ok() const = 0;
-
-    virtual CollectionCatalogEntry* getCatalogEntry() = 0;
-    virtual const CollectionCatalogEntry* getCatalogEntry() const = 0;
-
-    virtual DatabaseCatalogEntry* getDBCatalogEntry() = 0;
-    virtual const DatabaseCatalogEntry* getDBCatalogEntry() const = 0;
-
-    virtual CollectionInfoCache* infoCache() = 0;
-    virtual const CollectionInfoCache* infoCache() const = 0;
-
-    virtual const NamespaceString& ns() const = 0;
-
-    virtual const IndexCatalog* getIndexCatalog() const = 0;
-    virtual IndexCatalog* getIndexCatalog() = 0;
-
-    virtual const RecordStore* getRecordStore() const = 0;
-    virtual RecordStore* getRecordStore() = 0;
-
-    virtual CursorManager* getCursorManager() const = 0;
-
-    virtual bool requiresIdIndex() const = 0;
-
-    virtual Snapshotted<BSONObj> docFor(OperationContext* txn, const RecordId& loc) const = 0;
-
-    /**
-     * @param out - contents set to the right docs if exists, or nothing.
-     * @return true iff loc exists
-     */
-    virtual bool findDoc(OperationContext* txn, const RecordId& loc, Snapshotted<BSONObj>* out) const = 0;
-
-    // ---- things that should move to a CollectionAccessMethod like thing
-    /**
-     * Default arguments will return all items in the collection.
-     */
-    virtual RecordIterator* getIterator(
-        OperationContext* txn,
-        const RecordId& start = RecordId(),
-        const CollectionScanParams::Direction& dir = CollectionScanParams::FORWARD) const = 0;
-
-    /**
-     * Returns many iterators that partition the Collection into many disjoint sets. Iterating
-     * all returned iterators is equivalent to Iterating the full collection.
-     * Caller owns all pointers in the vector.
-     */
-    virtual std::vector<RecordIterator*> getManyIterators(OperationContext* txn) const = 0;
-
-    virtual void deleteDocument(OperationContext* txn,
-                                const RecordId& loc,
-                                bool cappedOK = false,
-                                bool noWarn = false,
-                                BSONObj* deletedId = 0) = 0;
-
-    /**
-     * this does NOT modify the doc before inserting
-     * i.e. will not add an _id field for documents that are missing it
-     *
-     * If enforceQuota is false, quotas will be ignored.
-     */
-    virtual StatusWith<RecordId> insertDocument(OperationContext* txn,
-                                                const BSONObj& doc,
-                                                bool enforceQuota) = 0;
-
-    virtual StatusWith<RecordId> insertDocument(OperationContext* txn,
-                                                const DocWriter* doc,
-                                                bool enforceQuota) = 0;
-
-    virtual StatusWith<RecordId> insertDocument(OperationContext* txn,
-                                                const BSONObj& doc,
-                                                MultiIndexBlock* indexBlock,
-                                                bool enforceQuota) = 0;
-
-    /**
-     * If the document at 'loc' is unlikely to be in physical memory, the storage
-     * engine gives us back a RecordFetcher functor which we can invoke in order
-     * to page fault on that record.
-     *
-     * Returns NULL if the document does not need to be fetched.
-     *
-     * Caller takes ownership of the returned RecordFetcher*.
-     */
-    virtual RecordFetcher* documentNeedsFetch(OperationContext* txn, const RecordId& loc) const = 0;
-
-    /**
-     * updates the document @ oldLocation with newDoc
-     * if the document fits in the old space, it is put there
-     * if not, it is moved
-     * @return the post update location of the doc (may or may not be the same as oldLocation)
-     */
-    virtual StatusWith<RecordId> updateDocument(OperationContext* txn,
-                                                const RecordId& oldLocation,
-                                                const Snapshotted<BSONObj>& oldDoc,
-                                                const BSONObj& newDoc,
-                                                bool enforceQuota,
-                                                bool indexesAffected,
-                                                OpDebug* debug) = 0;
-
-    /**
-     * right now not allowed to modify indexes
-     */
-    virtual Status updateDocumentWithDamages(OperationContext* txn,
-                                             const RecordId& loc,
-                                             const Snapshotted<RecordData>& oldRec,
-                                             const char* damageSource,
-                                             const mutablebson::DamageVector& damages) = 0;
-
-    virtual StatusWith<CompactStats> compact(OperationContext* txn, const CompactOptions* options) = 0;
-
-    /**
-     * removes all documents as fast as possible
-     * indexes before and after will be the same
-     * as will other characteristics
-     */
-    virtual Status truncate(OperationContext* txn) = 0;
-
-    /**
-     * @param full - does more checks
-     * @param scanData - scans each document
-     * @return OK if the validate run successfully
-     *         OK will be returned even if corruption is found
-     *         deatils will be in result
-     */
-    virtual Status validate(OperationContext* txn,
-                            bool full,
-                            bool scanData,
-                            ValidateResults* results,
-                            BSONObjBuilder* output) = 0;
-
-    /**
-     * forces data into cache
-     */
-    virtual Status touch(OperationContext* txn,
-                         bool touchData,
-                         bool touchIndexes,
-                         BSONObjBuilder* output) const = 0;
-
-    /**
-     * Truncate documents newer than the document at 'end' from the capped
-     * collection.  The collection cannot be completely emptied using this
-     * function.  An assertion will be thrown if that is attempted.
-     * @param inclusive - Truncate 'end' as well iff true
-     * XXX: this will go away soon, just needed to move for now
-     */
-    virtual void temp_cappedTruncateAfter(OperationContext* txn, RecordId end, bool inclusive) = 0;
-
-    virtual bool isCapped() const = 0;
-
-    virtual bool isPartitioned() const {
-        return false;
-    }
-
-    virtual uint64_t numRecords(OperationContext* txn) const = 0;
-
-    virtual uint64_t dataSize(OperationContext* txn) const = 0;
-
-    virtual int averageObjectSize(OperationContext* txn) const = 0;
-
-    virtual uint64_t getIndexSize(OperationContext* opCtx, BSONObjBuilder* details = NULL, int scale = 1) = 0;
-
-    template <class T> T *as() {
-        T *subclass = dynamic_cast<T *>(this);
-        massert(19176, "bug: failed to dynamically cast Collection to desired subclass", subclass != NULL);
-        return subclass;
-    }
-        
-};
-
-
-// put upstream Collection class into 'coll' namespace to reduce name changes
-// in collection.* files
-namespace coll {
-
-/**
  * this is NOT safe through a yield right now
  * not sure if it will be, or what yet
  */
-class Collection : public mongo::Collection, CappedDocumentDeleteCallback, UpdateNotifier {
+class Collection : CappedDocumentDeleteCallback, UpdateNotifier,
+                   public PartitionedCollectionItf {
 public:
     Collection(OperationContext* txn,
                const StringData& fullNS,
@@ -304,13 +118,6 @@ public:
     }
     const CollectionCatalogEntry* getCatalogEntry() const {
         return _details;
-    }
-
-    DatabaseCatalogEntry* getDBCatalogEntry() {
-        return _dbce;
-    }
-    const DatabaseCatalogEntry* getDBCatalogEntry() const {
-        return _dbce;
     }
 
     CollectionInfoCache* infoCache() {
@@ -491,7 +298,7 @@ public:
 
     // --- end suspect things
 
-private:
+protected:
     Status recordStoreGoingToMove(OperationContext* txn,
                                   const RecordId& oldLocation,
                                   const char* oldBuffer,
@@ -531,6 +338,4 @@ private:
     friend class IndexCatalog;
     friend class NamespaceDetails;
 };
-
-}
 }

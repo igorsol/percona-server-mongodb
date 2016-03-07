@@ -101,16 +101,14 @@ namespace mongo {
                     errmsg = "invalid id";
                     return false;
                 }
-                PartitionedCollection *pc = cl->as<PartitionedCollection>();
                 uint64_t partitionID = idElem.numberLong();
-                pc->dropPartition(txn, partitionID);
+                cl->dropPartition(txn, partitionID);
             }
             else {
                 verify(maxElem.ok());
                 BSONObj pivot = maxElem.embeddedObjectUserCheck();
                 fixDocumentForInsert(pivot);
-                PartitionedCollection *pc = cl->as<PartitionedCollection>();
-                pc->dropPartitionsLEQ(txn, pivot);
+                cl->dropPartitionsLEQ(txn, pivot);
             }
             return true;
         }
