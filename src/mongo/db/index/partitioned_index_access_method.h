@@ -40,6 +40,10 @@ namespace mongo {
         virtual void dropPartition(OperationContext* txn, int64_t id) {
             invariant(false);
         }
+
+        virtual void getKeys(const BSONObj& obj, BSONObjSet* keys) {
+            invariant(false);
+        }
     };
 
 } // namespace mongo

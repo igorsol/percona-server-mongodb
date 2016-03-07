@@ -679,14 +679,19 @@ void PartitionedCollection::dropPartition(OperationContext* txn, int64_t id) {
     dropPartitionInternal(txn, id);
 }
 
-BSONObj PartitionedCollection::getValidatedPKFromObject(const BSONObj &obj) const {
-    //TODO: this is stub implementattion
-    const BSONObj pk = obj.getOwned();
+BSONObj PartitionedCollection::getValidatedPKFromObject(OperationContext* txn, const BSONObj &obj) {
+    auto desc = _indexCatalog.findIndexByKeyPattern(txn, _pkPattern);
+    invariant(desc);
+    auto iam = _indexCatalog.getIndex(desc);
+    invariant(iam);
+    BSONObjSet keys;
+    iam->getKeys(obj, &keys);
+    const BSONObj pk = keys.begin()->getOwned();
     return pk;
 }
 
 void PartitionedCollection::dropPartitionsLEQ(OperationContext* txn, const BSONObj &pivot) {
-    BSONObj key = getValidatedPKFromObject(pivot);
+    BSONObj key = getValidatedPKFromObject(txn, pivot);
     while (numPartitions() > 1 &&
            key.woCompare(_partitions[0].maxpk, _pkPattern) >= 0) {
         dropPartition(txn, _partitions[0].id);

@@ -250,7 +250,7 @@ private:
     Status recordStoreGoingToUpdateInPlace(OperationContext* txn, const RecordId& loc);
 
     void dropPartitionInternal(OperationContext* txn, int64_t id);
-    BSONObj getValidatedPKFromObject(const BSONObj &obj) const;
+    BSONObj getValidatedPKFromObject(OperationContext* txn, const BSONObj &obj);
     Collection* getPrttnForRecordId(const RecordId& loc) const;
     Collection* getPrttnForDoc(const BSONObj& doc) const;
     BSONObj getPK(const BSONObj& doc) const;
