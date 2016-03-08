@@ -28,6 +28,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "mongo/base/counter.h"
 #include "mongo/base/owned_pointer_map.h"
+#include "mongo/client/dbclientinterface.h"  //for genIndexName
 #include "mongo/db/curop.h"
 #include "mongo/db/catalog/collection_catalog_entry.h"
 #include "mongo/db/index/index_access_method.h"
@@ -76,7 +77,13 @@ Status PartitionedCollection::createPkIndexOnEmptyCollection(OperationContext* t
     // if _pkPattern equals standard Id index then no need to create another one
     if (_pkPattern == BSON("_id" << 1))
         return Status::OK();
-    return _indexCatalog.createIndexOnEmptyCollection(txn, _pkPattern);
+
+    BSONObjBuilder b;
+    b.append("name", DBClientWithCommands::genIndexName(_pkPattern));
+    b.append("ns", ns().ns());
+    b.append("key", _pkPattern);
+
+    return _indexCatalog.createIndexOnEmptyCollection(txn, b.obj());
 }
 
 PartitionedCollection::~PartitionedCollection() {

@@ -23,7 +23,6 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #pragma once
 
 #include "mongo/db/catalog/collection.h"
-#include "mongo/db/catalog/partitioned_index_catalog.h"
 
 #include <deque>
 
