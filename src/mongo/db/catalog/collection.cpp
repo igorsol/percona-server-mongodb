@@ -89,8 +89,10 @@ Collection::Collection(OperationContext* txn,
                        const StringData& fullNS,
                        CollectionCatalogEntry* details,
                        RecordStore* recordStore,
-                       DatabaseCatalogEntry* dbce)
+                       DatabaseCatalogEntry* dbce,
+                       bool partitioned)
     : _ns(fullNS),
+      PartitionedCollectionItf(partitioned),
       _details(details),
       _recordStore(recordStore),
       _dbce(dbce),

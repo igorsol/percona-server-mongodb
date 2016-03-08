@@ -214,14 +214,10 @@ public:
     }
 
     // iterate partition ids of parent collection (with status)
-    Status forEachPartition(const std::function<Status (int64_t id)>& f) const {
-        return _collection->forEachPartition(f);
-    }
+    Status forEachPartition(OperationContext* txn, const std::function<Status (BSONObj const& pmd)>& f) const;
 
     // iterate partition ids of parent collection (without status)
-    void forEachPartition(const std::function<void (int64_t id)>& f) const {
-        _collection->forEachPartition(f);
-    }
+    void forEachPartition(OperationContext* txn, const std::function<void (BSONObj const& pmd)>& f) const;
 
 private:
     void _checkOk() const;

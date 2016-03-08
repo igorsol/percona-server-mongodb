@@ -105,7 +105,8 @@ public:
                const StringData& fullNS,
                CollectionCatalogEntry* details,  // does not own
                RecordStore* recordStore,         // does not own
-               DatabaseCatalogEntry* dbce);      // does not own
+               DatabaseCatalogEntry* dbce,       // does not own
+               bool partitioned = false);
 
     virtual ~Collection();
 

@@ -53,7 +53,7 @@ PartitionedCollection::PartitionedCollection(OperationContext* txn,
                                              CollectionCatalogEntry* cce,
                                              RecordStore* recordStore,
                                              DatabaseCatalogEntry* dbce)
-    : Collection(txn, fullNS, cce, recordStore, dbce),
+    : Collection(txn, fullNS, cce, recordStore, dbce, true),
       _recordStore(recordStore->as<KVRecordStorePartitioned>()) {
     invariant(!isCapped());
 
@@ -65,7 +65,7 @@ PartitionedCollection::PartitionedCollection(OperationContext* txn,
         _pkPattern = opts.primaryKey;
 
     // Create partitions from metadata
-    Status status = _details->forEachPMD(txn, [this, txn](BSONObj const& pmd){return loadPartition(txn, pmd);});
+    Status status = _details->forEachPMDWS(txn, [this, txn](BSONObj const& pmd){return loadPartition(txn, pmd);});
     invariant(status.isOK());
 }
 
@@ -112,6 +112,20 @@ bool PartitionedCollection::getMaxPKForPartitionCap(OperationContext* txn, BSONO
     return iam->getMaxKeyFromLastPartition(txn, result);
 }
 
+static BSONObj fillPKWithFieldsWithPattern(const BSONObj &pk, const BSONObj &pkPattern) {
+    BSONObjBuilder result(64);
+    BSONObjIterator patternIT(pkPattern);
+    BSONObjIterator pkIT(pk);
+    while (pkIT.more()) {
+        BSONElement pkElement = *pkIT;
+        result.appendAs(pkElement, (*patternIT).fieldName());
+        patternIT.next();
+        pkIT.next();
+    }
+    massert(19191, str::stream() << "There should be no more PK fields available for pk " << pk, !pkIT.more());
+    return result.obj();
+}
+
 Status PartitionedCollection::createPartition(OperationContext* txn) {
     int64_t id = 0;
     BSONObj maxpkforprev;
@@ -124,6 +138,7 @@ Status PartitionedCollection::createPartition(OperationContext* txn) {
         // get maxpkforprev from last partition
         bool foundLast = getMaxPKForPartitionCap(txn, maxpkforprev);
         uassert(19189, "can only cap a partition with no pivot if it is non-empty", foundLast);
+        maxpkforprev = fillPKWithFieldsWithPattern(maxpkforprev, _pkPattern);
     }
     StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
     if (!prs.isOK())

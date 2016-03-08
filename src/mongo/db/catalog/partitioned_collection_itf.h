@@ -30,10 +30,14 @@ namespace mongo {
  */
 class PartitionedCollectionItf {
 public:
+    PartitionedCollectionItf(bool partitioned) : _partitioned(partitioned) {}
     virtual ~PartitionedCollectionItf() {}
 
-    virtual bool isPartitioned() const {
-        return false;
+    // we need to know if collection is partitioned from functions called from
+    // Collection constructor (to decide if we need to create partitioned SDI)
+    // This is why isPartititoned is not virtual
+    bool isPartitioned() const {
+        return _partitioned;
     }
 
     // initialization
@@ -79,6 +83,10 @@ public:
     virtual void forEachPartition(const std::function<void (int64_t id)>& f) const {
         invariant(false);
     }
+
+private:
+    const bool _partitioned;
+
 };
 
 } // namespace mongo

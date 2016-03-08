@@ -120,7 +120,7 @@ public:
 
     void getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const;
     
-    Status forEachPMD(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) {
+    Status forEachPMDWS(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) override {
         Status status = Status::OK();
         MetaData md = _getMetaData(txn);
         for (const auto& pmd: md.partitions) {
@@ -129,6 +129,13 @@ public:
                 break;
         }
         return status;
+    }
+
+    void forEachPMD(OperationContext* txn, const std::function<void (BSONObj const&)>& f) override {
+        MetaData md = _getMetaData(txn);
+        for (const auto& pmd: md.partitions) {
+            f(pmd.obj);
+        }
     }
 
 protected:

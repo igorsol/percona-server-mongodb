@@ -115,11 +115,11 @@ public:
 
     // Overridden methods of PartitionedIndexAccessMethod
 
-    bool getMaxKeyFromLastPartition(OperationContext* txn, BSONObj &result) const {
+    bool getMaxKeyFromLastPartition(OperationContext* txn, BSONObj &result) const override {
         return _newInterface->getMaxKeyFromLastPartition(txn, result);
     }
 
-    void dropPartition(OperationContext* txn, int64_t id) {
+    void dropPartition(OperationContext* txn, int64_t id) override {
         _newInterface->dropPartition(txn, id);
     }
 

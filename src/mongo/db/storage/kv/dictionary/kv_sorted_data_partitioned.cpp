@@ -44,7 +44,8 @@ namespace mongo {
     {
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
-        desc->forEachPartition([&, this, opCtx, desc](int64_t id) {
+        desc->forEachPartition(opCtx, [&, this, opCtx, desc](BSONObj const& pmd) {
+            const int64_t id = pmd["_id"].numberLong();
             std::auto_ptr<KVDictionary>
                 db(_kvEngine->getKVDictionary(opCtx,
                                               getPartitionName(_ident, id),

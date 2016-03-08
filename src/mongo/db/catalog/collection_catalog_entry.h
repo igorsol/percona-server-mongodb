@@ -123,10 +123,15 @@ public:
         invariant(false);
     }
 
-    virtual Status forEachPMD(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) {
+    virtual Status forEachPMDWS(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) {
         invariant(false);
         return Status::OK();
     }
+
+    virtual void forEachPMD(OperationContext* txn, const std::function<void (BSONObj const&)>& f) {
+        invariant(false);
+    }
+
 private:
     NamespaceString _ns;
 };

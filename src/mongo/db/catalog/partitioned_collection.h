@@ -41,10 +41,6 @@ public:
 
     virtual ~PartitionedCollection();
 
-    bool isPartitioned() const override{
-        return true;
-    }
-
     // partitioning-specific methods
 
     // initialization

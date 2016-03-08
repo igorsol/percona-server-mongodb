@@ -109,9 +109,10 @@ namespace mongo {
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
         // For partitioned collections create dictionary per partition
         if (desc->isPartitioned()) {
-            return desc->forEachPartition(
-                std::function<Status (int64_t)>(
-                    [&, this, opCtx](int64_t id) {
+            return desc->forEachPartition(opCtx,
+                std::function<Status (BSONObj const&)>(
+                    [&, this, opCtx](BSONObj const& pmd) {
+                        const int64_t id = pmd["_id"].numberLong();
                         return createKVDictionary(opCtx,
                                           getPartitionName(ident, id),
                                           KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
