@@ -68,6 +68,17 @@ public:
     virtual void dropPartitionsLEQ(OperationContext* txn, const BSONObj &pivot) {
         invariant(false);
     }
+
+    // iterate partition ids (with status)
+    virtual Status forEachPartition(const std::function<Status (int64_t id)>& f) const {
+        invariant(false);
+        return Status(ErrorCodes::InternalError, "forEachPartition should not be called on non-partitioned collection");
+    }
+
+    // iterate partition ids (without status)
+    virtual void forEachPartition(const std::function<void (int64_t id)>& f) const {
+        invariant(false);
+    }
 };
 
 } // namespace mongo

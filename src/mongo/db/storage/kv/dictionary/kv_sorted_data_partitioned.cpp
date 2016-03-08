@@ -27,8 +27,9 @@ Copyright (c) 2006, 2016, Percona and/or its affiliates. All rights reserved.
 #include "mongo/base/checked_cast.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/index_entry_comparison.h"
-#include "mongo/db/storage/kv/dictionary/kv_sorted_data_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
+#include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
+#include "mongo/db/storage/kv/dictionary/kv_sorted_data_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 
 namespace mongo {
@@ -41,6 +42,17 @@ namespace mongo {
           _kvEngine(kvEngine),
           _ident(ident.toString())
     {
+        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
+        const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
+        desc->forEachPartition([&, this, opCtx, desc](int64_t id) {
+            std::auto_ptr<KVDictionary>
+                db(_kvEngine->getKVDictionary(opCtx,
+                                              getPartitionName(_ident, id),
+                                              KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
+                                              options));
+            _partitions.push_back(new KVSortedDataImpl(db.release(), opCtx, desc));
+            _partitionIDs.push_back(id);
+        });
     }
 
     KVSortedDataPartitioned::~KVSortedDataPartitioned() {

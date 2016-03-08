@@ -26,6 +26,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
+#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_capped.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
@@ -103,12 +104,22 @@ namespace mongo {
     Status KVEngineImpl::createSortedDataInterface(OperationContext* opCtx,
                                                    const StringData& ident,
                                                    const IndexDescriptor* desc) {
-        // For partitioned collections this is delayed
-        if (desc->isPartitioned())
-            return Status::OK();
         // Creating a sorted data impl is as simple as creating one with the given `ident'
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
+        // For partitioned collections create dictionary per partition
+        if (desc->isPartitioned()) {
+            return desc->forEachPartition(
+                std::function<Status (int64_t)>(
+                    [&, this, opCtx](int64_t id) {
+                        return createKVDictionary(opCtx,
+                                          getPartitionName(ident, id),
+                                          KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
+                                          options);
+                    }
+                )
+            );
+        }
         return createKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
                                   options);
 

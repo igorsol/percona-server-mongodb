@@ -65,6 +65,24 @@ public:
     void dropPartition(OperationContext* txn, int64_t id) override;
     void dropPartitionsLEQ(OperationContext* txn, const BSONObj &pivot) override;
 
+    // iterate partition ids (with status)
+    Status forEachPartition(const std::function<Status (int64_t id)>& f) const override {
+        Status status = Status::OK();
+        for (const auto& pd: _partitions) {
+            status = f(pd.id);
+            if (!status.isOK())
+                break;
+        }
+        return status;
+    }
+
+    // iterate partition ids (without status)
+    void forEachPartition(const std::function<void (int64_t id)>& f) const override {
+        for (const auto& pd: _partitions) {
+            f(pd.id);
+        }
+    }
+
 private:
     void dropPartitionInternal(OperationContext* txn, int64_t id);
     BSONObj getValidatedPKFromObject(OperationContext* txn, const BSONObj &obj);

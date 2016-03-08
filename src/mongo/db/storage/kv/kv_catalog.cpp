@@ -37,6 +37,7 @@
 
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/platform/random.h"
@@ -383,12 +384,6 @@ std::vector<std::string> KVCatalog::getAllIdentsForDB(const StringData& db) cons
     return v;
 }
 
-static std::string getPartitionName(const StringData &ns, uint64_t partitionID) {
-    mongo::StackStringBuilder ss;
-    ss << ns << "$$p" << partitionID;
-    return ss.str();
-}
-
 std::vector<std::string> KVCatalog::getAllIdents(OperationContext* opCtx) const {
     std::vector<std::string> v;
 
@@ -397,6 +392,47 @@ std::vector<std::string> KVCatalog::getAllIdents(OperationContext* opCtx) const 
         RecordId loc = it->getNext();
         RecordData data = it->dataFor(loc);
         BSONObj obj(data.data());
+
+        bool partitioned = false;
+
+        do {
+            BSONElement md = obj["md"];
+            if (!md.isABSONObj())
+                break;
+            BSONElement e = md["options"];
+            if (!e.isABSONObj())
+                break;
+            if (!e["partitioned"].booleanSafe())
+                break;
+
+            partitioned = true;
+
+            BSONElement t = obj["idxIdent"];
+            if (!t.isABSONObj())
+                break;
+            BSONObj idxIdent = t.Obj();
+
+            e = md["partitions"];
+            if (!e.isABSONObj())
+                break;
+            BSONObj partitions = e.Obj();
+            BSONObjIterator part(partitions);
+            while (part.more()) {
+                auto id = part.next().numberLong();
+                v.push_back(getPartitionName(obj["ident"].String(), id));
+
+                BSONObjIterator sub(idxIdent);
+                while (sub.more()) {
+                    BSONElement e = sub.next();
+                    v.push_back(getPartitionName(e.String(), id));
+                }
+            }
+        }
+        while(false);
+
+        if (partitioned)
+            continue;
+
         v.push_back(obj["ident"].String());
 
         BSONElement e = obj["idxIdent"];
@@ -408,19 +444,6 @@ std::vector<std::string> KVCatalog::getAllIdents(OperationContext* opCtx) const 
         while (sub.more()) {
             BSONElement e = sub.next();
             v.push_back(e.String());
-        }
-
-        // partition idents
-        e = obj["md"];
-        if (!e.isABSONObj())
-            continue;
-        e = e["partitions"];
-        if (!e.isABSONObj())
-            continue;
-        BSONObj partitions = e.Obj();
-        BSONObjIterator part(partitions);
-        while (part.more()) {
-            v.push_back(getPartitionName(obj["ident"].String(), part.next().numberLong()));
         }
     }
 

@@ -213,6 +213,16 @@ public:
         return ns.toString() + ".$" + name.toString();
     }
 
+    // iterate partition ids of parent collection (with status)
+    Status forEachPartition(const std::function<Status (int64_t id)>& f) const {
+        return _collection->forEachPartition(f);
+    }
+
+    // iterate partition ids of parent collection (without status)
+    void forEachPartition(const std::function<void (int64_t id)>& f) const {
+        _collection->forEachPartition(f);
+    }
+
 private:
     void _checkOk() const;
 
