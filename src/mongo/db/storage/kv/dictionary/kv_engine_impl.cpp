@@ -88,7 +88,7 @@ namespace mongo {
             if (options.capped) {
                 rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options, sizeStorer, supportsDocLocking()));
             } else {
-                rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options, sizeStorer));
+                rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options, sizeStorer, options.partitionId));
             }
         }
         return rs.release();

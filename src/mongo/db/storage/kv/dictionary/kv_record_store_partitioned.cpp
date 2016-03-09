@@ -50,6 +50,7 @@ namespace mongo {
     }
 
     StatusWith<RecordStore*> KVRecordStorePartitioned::createPartition(OperationContext* txn, int64_t partitionID) {
+        _partitionOptions.partitionId = partitionID;
         std::string const partIdent = getPartitionName(_ident, partitionID);
         Status status = _kvEngine->createRecordStore(txn, ns(), partIdent, _partitionOptions);
         if (!status.isOK())
