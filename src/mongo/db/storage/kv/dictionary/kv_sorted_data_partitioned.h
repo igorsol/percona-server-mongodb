@@ -97,6 +97,8 @@ namespace mongo {
 
         bool getMaxKeyFromLastPartition(OperationContext* txn, BSONObj &result) const override;
 
+        void createPartition(OperationContext* txn, int64_t id) override;
+
         void dropPartition(OperationContext* txn, int64_t id) override;
 
     private:
@@ -107,6 +109,9 @@ namespace mongo {
 
         // used to create/drop idents
         KVEngineImpl* _kvEngine;
+        const IndexDescriptor* _desc;
+        const BSONObj _keyPattern;
+        const BSONObj _options;
 
         const std::string _ident;
 

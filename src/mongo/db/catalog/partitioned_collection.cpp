@@ -127,33 +127,52 @@ static BSONObj fillPKWithFieldsWithPattern(const BSONObj &pk, const BSONObj &pkP
 }
 
 Status PartitionedCollection::createPartition(OperationContext* txn) {
-    int64_t id = 0;
     BSONObj maxpkforprev;
     if (_partitions.size() > 0) {
-        id = _partitions.back().id + 1;
-        id &= 0x7fffff;
-        // check if we reached maximum partitions limit
-        uassert(19177, "Cannot create partition. Too many partitions already exist.",
-                id != _partitions.front().id);
         // get maxpkforprev from last partition
         bool foundLast = getMaxPKForPartitionCap(txn, maxpkforprev);
         uassert(19189, "can only cap a partition with no pivot if it is non-empty", foundLast);
         maxpkforprev = fillPKWithFieldsWithPattern(maxpkforprev, _pkPattern);
     }
-    StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
-    if (!prs.isOK())
-        return prs.getStatus();
-    // update partition metadata structures
-    if (_partitions.size() > 0) {
-        _partitions.back().maxpk = maxpkforprev;
-    }
-    _partitions.emplace_back(id, getUpperBound());
-    _details->storeNewPartitionMetadata(txn, maxpkforprev, id, _partitions.back().maxpk);
-    return Status::OK();
+    return createPartition(txn, maxpkforprev, BSONObj());
 }
 
-Status PartitionedCollection::createPartition(OperationContext*txn, const BSONObj& newPivot, const BSONObj &partitionInfo) {
-    //TODO: implement
+Status PartitionedCollection::createPartition(OperationContext*txn, const BSONObj& maxpkforprev, const BSONObj &partitionInfo) {
+    if (partitionInfo.isEmpty()) {
+        int64_t id = 0;
+        if (_partitions.size() > 0) {
+            id = _partitions.back().id + 1;
+            id &= 0x7fffff;
+            // check if we reached maximum partitions limit
+            uassert(19177, "Cannot create partition. Too many partitions already exist.",
+                    id != _partitions.front().id);
+        }
+        StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
+        if (!prs.isOK())
+            return prs.getStatus();
+
+        // add indexes to the new partition
+        IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, true);
+        while (ii.more()) {
+            IndexDescriptor* descriptor = ii.next();
+            IndexAccessMethod* iam = _indexCatalog.getIndex(descriptor);
+            iam->createPartition(txn, id);
+        }
+
+        // update partition metadata structures
+        if (_partitions.size() > 0) {
+            _partitions.back().maxpk = maxpkforprev;
+        }
+        _partitions.emplace_back(id, getUpperBound());
+        _details->storeNewPartitionMetadata(txn, maxpkforprev, id, _partitions.back().maxpk);
+    }
+    else {
+        //TODO: implement
+        // following code is from tokumx but the call to cloneBSONWithFieldChanged looks useless
+        // because BSONObj o is not used
+        //BSONObj o = cloneBSONWithFieldChanged(partitionInfo, "max", getValidatedPKFromObject(partitionInfo["max"].Obj()), false);
+        //appendPartition(partitionInfo);
+    }
     return Status::OK();
 }
 

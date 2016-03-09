@@ -40,17 +40,18 @@ namespace mongo {
                                                      const IndexDescriptor* desc)
         : _ordering(Ordering::make(desc ? desc->keyPattern() : BSONObj())),
           _kvEngine(kvEngine),
+          _desc(desc),
+          _keyPattern(desc ? desc->keyPattern() : BSONObj()),
+          _options(desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj()),
           _ident(ident.toString())
     {
-        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
-        const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
         desc->forEachPartition(opCtx, [&, this, opCtx, desc](BSONObj const& pmd) {
             const int64_t id = pmd["_id"].numberLong();
             std::auto_ptr<KVDictionary>
                 db(_kvEngine->getKVDictionary(opCtx,
                                               getPartitionName(_ident, id),
-                                              KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
-                                              options));
+                                              KVDictionary::Encoding::forIndex(Ordering::make(_keyPattern)),
+                                              _options));
             _partitions.push_back(new KVSortedDataImpl(db.release(), opCtx, desc));
             _partitionIDs.push_back(id);
         });
@@ -150,6 +151,22 @@ namespace mongo {
             return false;
         result = cursor->getKey();
         return true;
+    }
+
+    void KVSortedDataPartitioned::createPartition(OperationContext* txn, int64_t id) {
+        // KVEngineImpl::createSortedDataInterface
+        Status status =
+            _kvEngine->createKVDictionary(txn, getPartitionName(_ident, id),
+                                          KVDictionary::Encoding::forIndex(Ordering::make(_keyPattern)),
+                                          _options);
+        invariant(status.isOK());
+        // KVEngineImpl::getSortedDataInterface
+        std::auto_ptr<KVDictionary>
+            db(_kvEngine->getKVDictionary(txn, getPartitionName(_ident, id),
+                                          KVDictionary::Encoding::forIndex(Ordering::make(_keyPattern)),
+                                          _options));
+        _partitions.push_back(new KVSortedDataImpl(db.release(), txn, _desc));
+        _partitionIDs.push_back(id);
     }
 
     void KVSortedDataPartitioned::dropPartition(OperationContext* txn, int64_t id) {

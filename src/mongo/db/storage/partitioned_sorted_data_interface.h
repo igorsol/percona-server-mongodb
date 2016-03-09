@@ -37,6 +37,10 @@ namespace mongo {
             return false;
         }
 
+        virtual void createPartition(OperationContext* txn, int64_t id) {
+            invariant(false);
+        }
+
         virtual void dropPartition(OperationContext* txn, int64_t id) {
             invariant(false);
         }

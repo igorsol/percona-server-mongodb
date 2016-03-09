@@ -119,6 +119,10 @@ public:
         return _newInterface->getMaxKeyFromLastPartition(txn, result);
     }
 
+    void createPartition(OperationContext* txn, int64_t id) override {
+        _newInterface->createPartition(txn, id);
+    }
+
     void dropPartition(OperationContext* txn, int64_t id) override {
         _newInterface->dropPartition(txn, id);
     }
