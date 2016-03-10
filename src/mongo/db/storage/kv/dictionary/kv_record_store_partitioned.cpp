@@ -49,25 +49,35 @@ namespace mongo {
         _partitionOptions._partitions = nullptr;
     }
 
-    StatusWith<RecordStore*> KVRecordStorePartitioned::createPartition(OperationContext* txn, int64_t partitionID) {
-        _partitionOptions.partitionId = partitionID;
-        std::string const partIdent = getPartitionName(_ident, partitionID);
+    Status KVRecordStorePartitioned::createPartition(OperationContext* txn, int64_t id) {
+        _partitionOptions.partitionId = id;
+        std::string const partIdent = getPartitionName(_ident, id);
         Status status = _kvEngine->createRecordStore(txn, ns(), partIdent, _partitionOptions);
         if (!status.isOK())
-            return StatusWith<RecordStore*>(status);
+            return status;
         RecordStore* rs = _kvEngine->getRecordStore(txn, ns(), partIdent, _partitionOptions);
         invariant(rs);
-        _partitionIDs.push_back(partitionID);
+        _partitionIDs.push_back(id);
         _partitions.push_back(rs);
         //TODO: do we need to registerChange here (see KVDatabaseCatalogEntry::createCollection)
-        return StatusWith<RecordStore*>(rs);
+        return Status::OK();
     }
 
-    void KVRecordStorePartitioned::dropPartition(OperationContext* txn, int64_t partitionID) {
+    Status KVRecordStorePartitioned::loadPartition(OperationContext* txn, int64_t id) {
+        _partitionOptions.partitionId = id;
+        std::string const partIdent = getPartitionName(_ident, id);
+        RecordStore* rs = _kvEngine->getRecordStore(txn, ns(), partIdent, _partitionOptions);
+        invariant(rs);
+        _partitionIDs.push_back(id);
+        _partitions.push_back(rs);
+        return Status::OK();
+    }
+
+    void KVRecordStorePartitioned::dropPartition(OperationContext* txn, int64_t id) {
         for (auto i = _partitionIDs.begin(); i != _partitionIDs.end(); ++i)
         {
-            if (*i == partitionID) {
-                _kvEngine->dropIdent(txn, getPartitionName(_ident, partitionID));
+            if (*i == id) {
+                _kvEngine->dropIdent(txn, getPartitionName(_ident, id));
                 auto prs = _partitions.begin() + (i - _partitionIDs.begin());
                 delete *prs;
                 _partitions.erase(prs);

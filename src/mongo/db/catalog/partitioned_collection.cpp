@@ -147,9 +147,9 @@ Status PartitionedCollection::createPartition(OperationContext*txn, const BSONOb
             uassert(19177, "Cannot create partition. Too many partitions already exist.",
                     id != _partitions.front().id);
         }
-        StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
-        if (!prs.isOK())
-            return prs.getStatus();
+        Status status = _recordStore->createPartition(txn, id);
+        if (!status.isOK())
+            return status;
 
         // add indexes to the new partition
         IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator(txn, true);
@@ -181,9 +181,9 @@ Status PartitionedCollection::createPartition(OperationContext*txn, const BSONOb
 // - maximim value of PK
 Status PartitionedCollection::loadPartition(OperationContext* txn, BSONObj const& pmd) {
     const int64_t id = pmd["_id"].numberLong();
-    StatusWith<RecordStore*> prs = _recordStore->createPartition(txn, id);
-    if (!prs.isOK())
-        return prs.getStatus();
+    Status status = _recordStore->loadPartition(txn, id);
+    if (!status.isOK())
+        return status;
     _partitions.emplace_back(id, pmd["max"]);
     return Status::OK();
 }

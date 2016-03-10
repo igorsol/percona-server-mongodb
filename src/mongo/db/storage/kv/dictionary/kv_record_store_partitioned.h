@@ -148,9 +148,11 @@ namespace mongo {
                                             long long numRecords,
                                             long long dataSize);
 
-        StatusWith<RecordStore*> createPartition(OperationContext* txn, int64_t partitionID);
+        Status createPartition(OperationContext* txn, int64_t id);
 
-        void dropPartition(OperationContext* txn, int64_t partitionID);
+        Status loadPartition(OperationContext* txn, int64_t id);
+
+        void dropPartition(OperationContext* txn, int64_t id);
 
         class KVRecordIteratorPartitioned : public RecordIterator {
         protected:

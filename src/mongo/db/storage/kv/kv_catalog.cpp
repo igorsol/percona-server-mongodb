@@ -418,7 +418,7 @@ std::vector<std::string> KVCatalog::getAllIdents(OperationContext* opCtx) const 
             BSONObj partitions = e.Obj();
             BSONObjIterator part(partitions);
             while (part.more()) {
-                auto id = part.next().numberLong();
+                auto id = part.next()["_id"].numberLong();
                 v.push_back(getPartitionName(obj["ident"].String(), id));
 
                 BSONObjIterator sub(idxIdent);
