@@ -84,6 +84,9 @@ private:
     BSONObj getPK(const BSONObj& doc) const;
     bool getMaxPKForPartitionCap(OperationContext* txn, BSONObj &result) const;
 
+    // get id of pratition where this doc belongs
+    int64_t getPrttnForDoc(const BSONObj& doc) const;
+
     // return upper bound
     BSONObj getUpperBound() const;
 

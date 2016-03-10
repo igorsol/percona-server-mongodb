@@ -235,6 +235,25 @@ uint64_t PartitionedCollection::numPartitions() const {
     return _partitions.size();
 }
 
+int64_t PartitionedCollection::getPrttnForDoc(const BSONObj& doc) const {
+    // if there is one partition, then the answer is easy
+    if (_partitions.size() == 1) {
+        return _partitions[0].id;
+    }
+    // get PK
+    BSONObj pk = getPK(doc);
+    // first check the last partition, as we expect many inserts and
+    // queries to go there
+    if (_partitions[_partitions.size()-2].maxpk.woCompare(pk, _pkPattern) < 0) {
+        return _partitions.back().id;
+    }
+    // search through the whole list
+    auto low = std::lower_bound(_partitions.begin(), _partitions.end(), pk,
+                                [this](const PartitionData& pd, const BSONObj& pk){
+                                    return pd.maxpk.woCompare(pk, _pkPattern) < 0;});
+    return low->id;
+}
+
 BSONObj PartitionedCollection::getUpperBound() const {
     BSONObjBuilder c(64);
     BSONObjIterator pkIter( _pkPattern );
