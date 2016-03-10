@@ -102,7 +102,7 @@ public:
     virtual bool isPartitioned(OperationContext* txn) const {
         return false;
     }
-    
+
     virtual void getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const {
         invariant(false);
     }

@@ -33,7 +33,7 @@ namespace mongo {
     namespace partcoll {
         GetPartitionInfoCommand::GetPartitionInfoCommand()
             : PartitionCommandBase("getPartitionInfo") {}
-            
+
         void GetPartitionInfoCommand::addRequiredPrivileges(const std::string& dbname,
                                                           const BSONObj& cmdObj,
                                                           std::vector<Privilege>* out) {

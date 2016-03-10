@@ -27,7 +27,7 @@ namespace mongo {
         class DropPartitionCommand : public PartitionCommandBase {
         public:
             DropPartitionCommand();
-			virtual bool isWriteCommandForConfigServer() const { return true; }
+            virtual bool isWriteCommandForConfigServer() const { return true; }
             virtual void addRequiredPrivileges(const std::string& dbname,
                                                const BSONObj& cmdObj,
                                                std::vector<Privilege>* out);

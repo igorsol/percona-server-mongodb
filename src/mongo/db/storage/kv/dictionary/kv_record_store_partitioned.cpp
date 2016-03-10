@@ -421,7 +421,7 @@ namespace mongo {
             setLocation(_savedLoc);
         } else {
             // We had saved state when the cursor was at EOF, so the savedLoc
-            // was null - therefore we must restoreState to EOF as well. 
+            // was null - therefore we must restoreState to EOF as well.
             //
             // Assert that this is indeed the case.
             invariant(isEOF());
@@ -440,7 +440,7 @@ namespace mongo {
         //
         // We save the last loc and val that we were pointing to before a call
         // to getNext(). We know that our caller intends to call dataFor() on
-        // each loc read this way, so if the given loc is equal to the last 
+        // each loc read this way, so if the given loc is equal to the last
         // loc, then we can return the last value read, which we own and now
         // pass to the caller with a shared pointer.
         if (!_savedLoc.isNull() && _savedLoc == loc) {

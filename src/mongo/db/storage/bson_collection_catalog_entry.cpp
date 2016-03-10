@@ -145,7 +145,7 @@ void BSONCollectionCatalogEntry::IndexMetaData::updateTTLSetting(long long newEx
 
 BSONCollectionCatalogEntry::MetaData::MetaData()
     : options(&partitions) {}
-    
+
 int BSONCollectionCatalogEntry::MetaData::findIndexOffset(const StringData& name) const {
     for (unsigned i = 0; i < indexes.size(); i++)
         if (indexes[i].name() == name)

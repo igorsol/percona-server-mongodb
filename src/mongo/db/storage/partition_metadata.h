@@ -7,8 +7,8 @@
 namespace mongo {
 
 struct PartitionMetaData {
-	typedef std::deque<PartitionMetaData> deque;
-	
+    typedef std::deque<PartitionMetaData> deque;
+
     PartitionMetaData(const BSONElement& pmd)
         : obj(pmd.Obj().getOwned()), id(obj["_id"].numberLong()) {}
 

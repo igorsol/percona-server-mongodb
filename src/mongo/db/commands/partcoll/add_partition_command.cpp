@@ -112,7 +112,7 @@ namespace mongo {
                 cl->getCatalogEntry()->getPartitionInfo(txn, &numPartitions, &partitionArray);
                 std::vector<BSONElement> v;
                 partitionArray.elems(v);
-                
+
                 // now we need to log this thing for replication
                 BSONObj cmdWithPivot;
                 if (!pivotElement.ok()) {

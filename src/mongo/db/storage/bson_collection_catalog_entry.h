@@ -87,7 +87,7 @@ public:
 
     struct MetaData {
         MetaData();
-        
+
         void parse(const BSONObj& obj);
         BSONObj toBSON() const;
 
@@ -119,7 +119,7 @@ public:
     // --------- partitions --------------
 
     void getPartitionInfo(OperationContext* txn, uint64_t* numPartitions, BSONArray* partitionArray) const;
-    
+
     Status forEachPMDWS(OperationContext* txn, const std::function<Status (BSONObj const&)>& f) override {
         Status status = Status::OK();
         MetaData md = _getMetaData(txn);

@@ -367,7 +367,7 @@ public:
         massert(19178, "bug: failed to dynamically cast RecordStore to desired subclass", subclass != NULL);
         return subclass;
     }
-        
+
 protected:
     std::string _ns;
 };

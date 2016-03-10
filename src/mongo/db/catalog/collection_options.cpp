@@ -101,7 +101,7 @@ Status CollectionOptions::parse(const BSONObj& options) {
             partitioned = e.trueValue();
         } else if (fieldName == "primaryKey") {
             // primary key for partitioned collection
-            // for example: 
+            // for example:
             // db.createCollection('prices', {primaryKey:  {time: 1, _id: 1},
             //                     partitioned: true})
             if (!options["partitioned"].trueValue()) {
