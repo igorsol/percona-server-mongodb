@@ -78,6 +78,22 @@ public:
         }
     }
 
+
+    // overriden Collection's methods
+
+    StatusWith<RecordId> insertDocument(OperationContext* txn,
+                                        const BSONObj& doc,
+                                        bool enforceQuota) override;
+
+    StatusWith<RecordId> insertDocument(OperationContext* txn,
+                                        const DocWriter* doc,
+                                        bool enforceQuota) override;
+
+    StatusWith<RecordId> insertDocument(OperationContext* txn,
+                                        const BSONObj& doc,
+                                        MultiIndexBlock* indexBlock,
+                                        bool enforceQuota) override;
+
 private:
     void dropPartitionInternal(OperationContext* txn, int64_t id);
     BSONObj getValidatedPKFromObject(OperationContext* txn, const BSONObj &obj);
@@ -85,7 +101,7 @@ private:
     bool getMaxPKForPartitionCap(OperationContext* txn, BSONObj &result) const;
 
     // get id of pratition where this doc belongs
-    int64_t getPrttnForDoc(const BSONObj& doc) const;
+    size_t getPartitionOffset(const char* data) const;
 
     // return upper bound
     BSONObj getUpperBound() const;

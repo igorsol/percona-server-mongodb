@@ -235,23 +235,52 @@ uint64_t PartitionedCollection::numPartitions() const {
     return _partitions.size();
 }
 
-int64_t PartitionedCollection::getPrttnForDoc(const BSONObj& doc) const {
+StatusWith<RecordId> PartitionedCollection::insertDocument(OperationContext* txn,
+                                                           const BSONObj& doc,
+                                                           bool enforceQuota) {
+    txn->getPartitionOffset = [this](const char* data) {
+        return getPartitionOffset(data);
+    };
+    return Collection::insertDocument(txn, doc, enforceQuota);
+}
+
+StatusWith<RecordId> PartitionedCollection::insertDocument(OperationContext* txn,
+                                                           const DocWriter* doc,
+                                                           bool enforceQuota) {
+    txn->getPartitionOffset = [this](const char* data) {
+        return getPartitionOffset(data);
+    };
+    return Collection::insertDocument(txn, doc, enforceQuota);
+}
+
+StatusWith<RecordId> PartitionedCollection::insertDocument(OperationContext* txn,
+                                                           const BSONObj& doc,
+                                                           MultiIndexBlock* indexBlock,
+                                                           bool enforceQuota) {
+    txn->getPartitionOffset = [this](const char* data) {
+        return getPartitionOffset(data);
+    };
+    return Collection::insertDocument(txn, doc, indexBlock, enforceQuota);
+}
+
+size_t PartitionedCollection::getPartitionOffset(const char* data) const {
+    const BSONObj doc(data);
     // if there is one partition, then the answer is easy
     if (_partitions.size() == 1) {
-        return _partitions[0].id;
+        return 0;
     }
     // get PK
     BSONObj pk = getPK(doc);
     // first check the last partition, as we expect many inserts and
     // queries to go there
     if (_partitions[_partitions.size()-2].maxpk.woCompare(pk, _pkPattern) < 0) {
-        return _partitions.back().id;
+        return _partitions.size()-1;
     }
     // search through the whole list
     auto low = std::lower_bound(_partitions.begin(), _partitions.end(), pk,
                                 [this](const PartitionData& pd, const BSONObj& pk){
                                     return pd.maxpk.woCompare(pk, _pkPattern) < 0;});
-    return low->id;
+    return low - _partitions.begin();
 }
 
 BSONObj PartitionedCollection::getUpperBound() const {

@@ -138,8 +138,8 @@ namespace mongo {
                                                                  const char* data,
                                                                  int len,
                                                                  bool enforceQuota ) {
-        // new generated record ID will always go into the last partition
-        return _partitions.back()->insertRecord(txn, data, len, enforceQuota);
+        invariant(bool(txn->getPartitionOffset));
+        return _partitions[txn->getPartitionOffset(data)]->insertRecord(txn, data, len, enforceQuota);
     }
 
     StatusWith<RecordId> KVRecordStorePartitioned::insertRecord( OperationContext* txn,

@@ -24,6 +24,9 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 namespace mongo {
 
+class DocWriter;
+class MultiIndexBlock;
+
 /**
  * methods which we want to inject into Collection class
  * to support partitioned collections
@@ -83,6 +86,22 @@ public:
     virtual void forEachPartition(const std::function<void (int64_t id)>& f) const {
         invariant(false);
     }
+
+
+    // need to override some methods in PartitionedCollection
+    // so here those methods declared as virtual
+    virtual StatusWith<RecordId> insertDocument(OperationContext* txn,
+                                                const BSONObj& doc,
+                                                bool enforceQuota) = 0;
+
+    virtual StatusWith<RecordId> insertDocument(OperationContext* txn,
+                                                const DocWriter* doc,
+                                                bool enforceQuota) = 0;
+
+    virtual StatusWith<RecordId> insertDocument(OperationContext* txn,
+                                                const BSONObj& doc,
+                                                MultiIndexBlock* indexBlock,
+                                                bool enforceQuota) = 0;
 
 private:
     const bool _partitioned;
