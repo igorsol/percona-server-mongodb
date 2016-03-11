@@ -275,15 +275,15 @@ namespace mongo {
             if (_dir == 1) {
                 comparator = [this] (SortedDataInterface::Cursor* a, SortedDataInterface::Cursor* b) -> bool {
                     // return true if b < a
-                    return -1 == _idx_compare(IndexKeyEntry(b->getKey(), b->getRecordId()),
-                                              IndexKeyEntry(a->getKey(), a->getRecordId()));
+                    return _idx_compare(IndexKeyEntry(b->getKey(), b->getRecordId()),
+                                        IndexKeyEntry(a->getKey(), a->getRecordId()));
                 };
             }
             else {
                 comparator = [this] (SortedDataInterface::Cursor* a, SortedDataInterface::Cursor* b) -> bool {
                     // return true if a < b
-                    return -1 == _idx_compare(IndexKeyEntry(a->getKey(), a->getRecordId()),
-                                              IndexKeyEntry(b->getKey(), b->getRecordId()));
+                    return _idx_compare(IndexKeyEntry(a->getKey(), a->getRecordId()),
+                                        IndexKeyEntry(b->getKey(), b->getRecordId()));
                 };
             }
         }
@@ -365,14 +365,14 @@ namespace mongo {
             _initialize();
             if (!isEOF()) {
                 invariant(_currcur);
-                _heap.pop_front();
+                std::pop_heap(_heap.begin(), _heap.end(), comparator);
                 _currcur->advance();
                 if (_currcur->isEOF()) {
+                    _heap.pop_back();
                     delete _currcur;
                     _currcur = nullptr;
                 }
                 else {
-                    _heap.push_back(_currcur);
                     std::push_heap(_heap.begin(), _heap.end(), comparator);
                 }
                 // can become EOF if previous _currcur was not reinserted into the heap
