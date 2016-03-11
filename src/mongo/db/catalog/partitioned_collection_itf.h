@@ -26,6 +26,7 @@ namespace mongo {
 
 class DocWriter;
 class MultiIndexBlock;
+class OpDebug;
 
 /**
  * methods which we want to inject into Collection class
@@ -102,6 +103,16 @@ public:
                                                 const BSONObj& doc,
                                                 MultiIndexBlock* indexBlock,
                                                 bool enforceQuota) = 0;
+
+    // need to override updateDocument to handle updates of primary key
+    // which move document to another partition
+    virtual StatusWith<RecordId> updateDocument(OperationContext* txn,
+                                                const RecordId& oldLocation,
+                                                const Snapshotted<BSONObj>& objOld,
+                                                const BSONObj& objNew,
+                                                bool enforceQuota,
+                                                bool indexesAffected,
+                                                OpDebug* debug) = 0;
 
 private:
     const bool _partitioned;

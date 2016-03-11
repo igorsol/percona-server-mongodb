@@ -94,6 +94,14 @@ public:
                                         MultiIndexBlock* indexBlock,
                                         bool enforceQuota) override;
 
+    StatusWith<RecordId> updateDocument(OperationContext* txn,
+                                        const RecordId& oldLocation,
+                                        const Snapshotted<BSONObj>& objOld,
+                                        const BSONObj& objNew,
+                                        bool enforceQuota,
+                                        bool indexesAffected,
+                                        OpDebug* debug) override;
+
 private:
     void dropPartitionInternal(OperationContext* txn, int64_t id);
     BSONObj getValidatedPKFromObject(OperationContext* txn, const BSONObj &obj);
@@ -101,6 +109,7 @@ private:
     bool getMaxPKForPartitionCap(OperationContext* txn, BSONObj &result) const;
 
     // get id of pratition where this doc belongs
+    size_t getPartitionOffset(const BSONObj& doc) const;
     size_t getPartitionOffset(const char* data) const;
 
     // return upper bound

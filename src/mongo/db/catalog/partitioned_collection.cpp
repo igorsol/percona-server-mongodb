@@ -37,7 +37,6 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 
 #include "mongo/util/log.h"
-#include <signal.h>  //TODO: remove when SIGTRAP debugging will be finished
 
 namespace mongo {
 
@@ -263,8 +262,27 @@ StatusWith<RecordId> PartitionedCollection::insertDocument(OperationContext* txn
     return Collection::insertDocument(txn, doc, indexBlock, enforceQuota);
 }
 
-size_t PartitionedCollection::getPartitionOffset(const char* data) const {
-    const BSONObj doc(data);
+StatusWith<RecordId> PartitionedCollection::updateDocument(OperationContext* txn,
+                                                           const RecordId& oldLocation,
+                                                           const Snapshotted<BSONObj>& objOld,
+                                                           const BSONObj& objNew,
+                                                           bool enforceQuota,
+                                                           bool indexesAffected,
+                                                           OpDebug* debug) {
+    invariant(oldLocation.partitionId() == _partitions[getPartitionOffset(objOld.value())].id);
+    const PartitionData& pd = _partitions[getPartitionOffset(objNew)];
+
+    // if document is not moved then just call Collection::updateDocument
+    if (oldLocation.partitionId() == pd.id)
+        return Collection::updateDocument(txn, oldLocation, objOld, objNew, enforceQuota,
+                                          indexesAffected, debug);
+
+    // otherwise remove old document and insert new document
+    deleteDocument(txn, oldLocation);
+    return insertDocument(txn, objNew, enforceQuota);
+}
+
+size_t PartitionedCollection::getPartitionOffset(const BSONObj& doc) const {
     // if there is one partition, then the answer is easy
     if (_partitions.size() == 1) {
         return 0;
@@ -281,6 +299,10 @@ size_t PartitionedCollection::getPartitionOffset(const char* data) const {
                                 [this](const PartitionData& pd, const BSONObj& pk){
                                     return pd.maxpk.woCompare(pk, _pkPattern) < 0;});
     return low - _partitions.begin();
+}
+
+size_t PartitionedCollection::getPartitionOffset(const char* data) const {
+    return getPartitionOffset(BSONObj(data));
 }
 
 BSONObj PartitionedCollection::getUpperBound() const {

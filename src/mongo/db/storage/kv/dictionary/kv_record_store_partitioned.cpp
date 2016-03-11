@@ -156,8 +156,10 @@ namespace mongo {
                                                                  int len,
                                                                  bool enforceQuota,
                                                                  UpdateNotifier* notifier ) {
-        //TODO: implement
-        return StatusWith<RecordId>(Status(ErrorCodes::InternalError, "update is not implemented yet"));
+        // PartitionedCollection::updateDocument ensures that this is only called when
+        // modified document stays in the same partition
+        return rsForRecordId(oldLocation)->updateRecord(txn, oldLocation, data, len, enforceQuota,
+                                                        notifier);
     }
 
     Status KVRecordStorePartitioned::updateWithDamages( OperationContext* txn,
@@ -165,8 +167,11 @@ namespace mongo {
                                                         const RecordData& oldRec,
                                                         const char* damageSource,
                                                         const mutablebson::DamageVector& damages ) {
-        //TODO: implement
-        return Status(ErrorCodes::InternalError, "update is not implemented yet");
+        // according to comments in upstream 3.0 code updateWithDamages cannot move document
+        // and cannot change its size and also cannot change indexes
+        // that is it cannot move document to another partition
+        // thus implementation here is simple
+        return rsForRecordId(loc)->updateWithDamages(txn, loc, oldRec, damageSource, damages);
     }
 
     RecordIterator* KVRecordStorePartitioned::getIterator( OperationContext* txn,
