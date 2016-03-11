@@ -141,7 +141,13 @@ namespace mongo {
     bool KVSortedDataPartitioned::appendCustomStats(OperationContext* txn,
                                                     BSONObjBuilder* output,
                                                     double scale) const {
-        //TODO: what format to use here?
+        BSONArrayBuilder ab(output->subarrayStart("partitions"));
+        for (SortedDataInterface* sdi: _partitions) {
+            BSONObjBuilder b(ab.subobjStart());
+            sdi->appendCustomStats(txn, &b, scale);
+            b.doneFast();
+        }
+        ab.doneFast();
         return true;
     }
 

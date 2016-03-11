@@ -59,7 +59,7 @@ namespace mongo {
         /**
          * Name of the RecordStore implementation.
          */
-        virtual const char* name() const { return NULL;/*_db->name();*/ } //TODO: this is fake implementattion
+        virtual const char* name() const { return _partitions[0]->name(); }
 
         /**
          * Total size of each record id key plus the records stored.
@@ -108,8 +108,7 @@ namespace mongo {
                                                   UpdateNotifier* notifier );
 
         virtual bool updateWithDamagesSupported() const {
-            //TODO: return _db->updateSupported();
-            return false;
+            return _partitions[0]->updateWithDamagesSupported();
         }
 
         virtual Status updateWithDamages( OperationContext* txn,
