@@ -160,7 +160,7 @@ Status PartitionedCollection::createPartition(OperationContext*txn, const BSONOb
 
         // update partition metadata structures
         if (_partitions.size() > 0) {
-            _partitions.back().maxpk = maxpkforprev;
+            _partitions.back().maxpk = maxpkforprev.copy();
         }
         _partitions.emplace_back(id, getUpperBound());
         _details->storeNewPartitionMetadata(txn, maxpkforprev, id, _partitions.back().maxpk);
