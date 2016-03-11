@@ -92,6 +92,7 @@ namespace mongo {
 
             BSONElement idElem = cmdObj["id"];
             BSONElement maxElem = cmdObj["max"];
+            WriteUnitOfWork wunit(txn);
             if (idElem.ok() ==  maxElem.ok()) {
                 errmsg = "must provide either an id or a max key of data to be dropped";
                 return false;
@@ -110,6 +111,7 @@ namespace mongo {
                 fixDocumentForInsert(pivot);
                 cl->dropPartitionsLEQ(txn, pivot);
             }
+            wunit.commit();
             return true;
         }
 

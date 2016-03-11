@@ -223,7 +223,7 @@ BSONObj PartitionedCollection::getValidatedPKFromObject(OperationContext* txn, c
 }
 
 void PartitionedCollection::dropPartitionsLEQ(OperationContext* txn, const BSONObj &pivot) {
-    BSONObj key = getValidatedPKFromObject(txn, pivot);
+    BSONObj key = getPK(pivot);
     while (numPartitions() > 1 &&
            key.woCompare(_partitions[0].maxpk, _pkPattern) >= 0) {
         dropPartition(txn, _partitions[0].id);
