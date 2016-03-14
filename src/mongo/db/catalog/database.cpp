@@ -384,7 +384,7 @@ Status Database::dropCollection(OperationContext* txn, const StringData& fullns)
         return s;
     }
 
-    verify(collection->getCatalogEntry()->getTotalIndexCount(txn) == 0);
+    verify(collection->_details->getTotalIndexCount(txn) == 0);
     LOG(1) << "\t dropIndexes done" << endl;
 
     Top::global.collectionDropped(fullns);
@@ -420,7 +420,7 @@ void Database::_clearCollectionCache(OperationContext* txn, const StringData& fu
     // Takes ownership of the collection
     txn->recoveryUnit()->registerChange(new RemoveCollectionChange(this, it->second));
 
-    it->second->getCursorManager()->invalidateAll(false);
+    it->second->_cursorManager.invalidateAll(false);
     _collections.erase(it);
 }
 
