@@ -267,8 +267,20 @@ namespace mongo {
         result->appendBool("capped", false);
         result->appendBool("partitioned", true);
         BSONArrayBuilder ab(result->subarrayStart("partitions"));
+        auto idit = _partitionIDs.cbegin();
         for (RecordStore* rs: _partitions) {
             BSONObjBuilder b(ab.subobjStart());
+            b.appendNumber("_id", static_cast<long long>(*idit++));
+            long long size = rs->dataSize(txn) / scale;
+            long long numRecords = rs->numRecords(txn);
+            b.appendNumber("count", numRecords);
+            b.appendNumber("size", size);
+            if (numRecords)
+                b.append("avgObjSize", static_cast<int>(size / numRecords));
+
+            b.appendNumber("storageSize",
+                           static_cast<long long>(rs->storageSize(txn, &b, 1)) / scale);
+
             rs->appendCustomStats(txn, &b, scale);
             b.doneFast();
         }

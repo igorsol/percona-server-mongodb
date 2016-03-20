@@ -142,8 +142,10 @@ namespace mongo {
                                                     BSONObjBuilder* output,
                                                     double scale) const {
         BSONArrayBuilder ab(output->subarrayStart("partitions"));
+        auto idit = _partitionIDs.cbegin();
         for (SortedDataInterface* sdi: _partitions) {
             BSONObjBuilder b(ab.subobjStart());
+            b.appendNumber("_id", static_cast<long long>(*idit++));
             sdi->appendCustomStats(txn, &b, scale);
             b.doneFast();
         }
