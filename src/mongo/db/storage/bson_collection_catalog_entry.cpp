@@ -30,6 +30,8 @@
 
 #include "mongo/db/storage/bson_collection_catalog_entry.h"
 
+#include "mongo/bson/bsonclone.h"
+
 namespace mongo {
 
 BSONCollectionCatalogEntry::BSONCollectionCatalogEntry(const StringData& ns)
@@ -266,6 +268,17 @@ void BSONCollectionCatalogEntry::MetaData::storeNewPartitionMetadata(BSONObj con
 }
 
 void BSONCollectionCatalogEntry::MetaData::dropPartitionMetadata(int64_t partitionId) {
+    // last partition is a special case:
+    // on its deletion we need to update max value of the new last partition
+    if (partitions.back().id == partitionId) {
+        // copy max key from last partition to the second last partition
+        auto penultimate = partitions.rbegin() + 1;
+        penultimate->obj = cloneBSONWithFieldChanged(penultimate->obj, "max",
+                                                     partitions.back().obj["max"].Obj());
+        // delete last partition
+        partitions.pop_back();
+        return;
+    }
     for (auto it = partitions.begin(); it != partitions.end(); ++it) {
         if (it->id == partitionId) {
             partitions.erase(it);

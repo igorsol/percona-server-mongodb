@@ -31,6 +31,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "add_partition_command.h"
 
+#include "mongo/bson/bsonclone.h"
+
 namespace mongo {
     namespace partcoll {
         AddPartitionCommand::AddPartitionCommand()
