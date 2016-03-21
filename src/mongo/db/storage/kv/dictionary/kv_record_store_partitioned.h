@@ -169,7 +169,7 @@ namespace mongo {
 
             // abstract methods which implementation depends on _dir value
             virtual void setLocation(const RecordId id) = 0;
-            virtual void advancePartition() = 0;
+            virtual void advancePartition(const RecordId& loc = RecordId()) = 0;
             virtual bool isLastPartition() const = 0;
 
         public:
@@ -207,7 +207,7 @@ namespace mongo {
                 // This is only called with non-null locations
                 invariant(!loc.isNull());
                 it = _getPartitionIterator(loc.partitionId());
-                advancePartition();
+                advancePartition(loc);
                 _savedLoc = RecordId();
             }
 
@@ -215,10 +215,10 @@ namespace mongo {
                 return it == _rs._partitions.cend();
             }
 
-            void advancePartition() override {
+            void advancePartition(const RecordId& loc = RecordId()) override {
                 invariant(!isLastPartition());
                 delete _rIt;
-                _rIt = (*it)->getIterator(_txn);
+                _rIt = (*it)->getIterator(_txn, loc);
                 ++it;
             }
 
@@ -230,7 +230,7 @@ namespace mongo {
                 if (!start.isNull()) {
                     it = _getPartitionIterator(start.partitionId());
                 }
-                advancePartition();
+                advancePartition(start);
             }
 
         };
@@ -249,7 +249,7 @@ namespace mongo {
                 // This is only called with non-null locations
                 invariant(!loc.isNull());
                 it = _getPartitionIterator(loc.partitionId());
-                advancePartition();
+                advancePartition(loc);
                 _savedLoc = RecordId();
             }
 
@@ -257,10 +257,10 @@ namespace mongo {
                 return it == _rs._partitions.crend();
             }
 
-            void advancePartition() override {
+            void advancePartition(const RecordId& loc = RecordId()) override {
                 invariant(!isLastPartition());
                 delete _rIt;
-                _rIt = (*it)->getIterator(_txn, RecordId(), CollectionScanParams::BACKWARD);
+                _rIt = (*it)->getIterator(_txn, loc, CollectionScanParams::BACKWARD);
                 ++it;
             }
 
@@ -272,7 +272,7 @@ namespace mongo {
                 if (!start.isNull()) {
                     it = _getPartitionIterator(start.partitionId());
                 }
-                advancePartition();
+                advancePartition(start);
             }
 
         };
