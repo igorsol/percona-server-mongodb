@@ -115,7 +115,7 @@ Arguments:
 Field|Type|Description
 -----|----|-----------
 dropPartition|string|The collection to get partition info from.
-id|number (optional)|The id of the partition to be dropped. Partition ids may be identified by running [getPartitionInfo](#command-getPartitionInfo). Note that while optional, either id or max must be present, but not both.
+id|number (optional)|The id of the partition to be dropped. Partition ids may be identified by running [getPartitionInfo](#command-getpartitioninfo). Note that while optional, either id or max must be present, but not both.
 max|document (optional)|Specifies the maximum partition key for dropping such that all partitions with documents less than or equal to max are dropped. Note that while optional, either id or max must be present, but not both.
 
 Drop the partition given a partition id. This command is used for [Dropping a Partition](concepts.md#dropping-a-partition) of a [Partitioned Collections](README.md).
