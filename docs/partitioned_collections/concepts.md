@@ -59,7 +59,7 @@ Example: For a newly created partitioned collection, `foo`, that has only one pa
 	],
 	"ok" : 1
 }
-``` 
+```
 
 Note there is one partition and the maximum value of that partition is a special value "$maxKey", which is the greatest possible key.
 
@@ -161,15 +161,15 @@ Partitions are added with the `db.collection.addPartition()` shell wrapper, or t
 When adding a partition, the previously last partition is “capped” by assigning a new max value that must be larger or equal than the key of any document already in the collection, and a new partition is created with a `max` value of that special `"maxKey"` value that is larger than any key.
 
 > Warning
-> 
+>
 > When querying a partitioned collection, the server maintains separate cursors on all existing partitions that are relevant to the query. Since adding and dropping partitions changes which partitions may be relevant, the act of adding or dropping a partition invalidates any existing cursors on the collection.
-> 
+>
 > This will return an error to any client which has not retrieved all results, and clients should be prepared to retry their queries in this case.
 
 The `max` value chosen to “cap” the previous partition can be specified as the `newMax` parameter to [addPartition](commands.md#command-addpartition), or if not provided, the server will automatically use the largest key of any document currently in in the collection for that `max` value.
 
 > Note
-> 
+>
 > It is considered an error to add a partition without specifying the newMax parameter if the last partition is currently empty.
 
 Example: Consider a collection `foo`, with two partitions, each containing one document:
@@ -276,9 +276,9 @@ Instead, we can provide a different key to cap the second partition:
 ```
 
 > Note
-> 
+>
 > A custom value for `max` must be a valid `primaryKey` and:
-> 
+>
 > Be greater than the `max` of all existing partitions except the last one (which is the one getting the new `max`).
 > Be greater than any `primaryKey` that exists in the collection.
 
@@ -287,9 +287,9 @@ Instead, we can provide a different key to cap the second partition:
 Partitions may also be dropped. This deletes all documents in that partition’s range by unlinking the underlying data and index files.
 
 > Note
-> 
+>
 > Any partition of a collection may be dropped. Most time-series applications using partitioned collections will drop the first partition, but this is not the only option.
-> 
+>
 > When dropping the last partition (holding the largest documents by primaryKey) of a collection, the previous partition’s max is changed to be the special “maxKey” element.
 
 There are two methods for dropping partitions, using different invocations of the [dropPartition](commands.md#command-droppartition) command:
@@ -298,7 +298,7 @@ There are two methods for dropping partitions, using different invocations of th
 - Drop all partitions whose `max` value is less than or equal to some key.
 
 > Warning
-> 
+>
 > If a collection only has one partition, it is considered an error to drop that partition. Instead, simply drop the collection with `db.collection.drop()`.
 
 Example:
@@ -400,4 +400,3 @@ Current implementation of partitioned collections has following differences comp
 ## Features of TokuMX's partitioned collection which are not implemented yet
 - In TokuMX, the oplog.rs and oplog.refs collections, both of which are used for replication, are partitioned collections. In Percona Server for MongoDB they aren't yet.
 - TokuMX has special support for sharding partitoned collections ([see here](https://www.percona.com/doc/percona-tokumx/partitioned_collections.html#sharding-of-partitioned-collections)). Need to clarify how sharding of partitioned collections works in Percona Server for MongoDB.
-

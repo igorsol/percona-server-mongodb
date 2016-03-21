@@ -1,4 +1,4 @@
-# Partitooned Collections Commands
+# Partitioned Collections Commands
 
 ## command addPartition
 
