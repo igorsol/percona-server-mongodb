@@ -133,10 +133,29 @@ Status PartitionedCollection::createPartition(OperationContext* txn) {
         uassert(19189, "can only cap a partition with no pivot if it is non-empty", foundLast);
         maxpkforprev = fillPKWithFieldsWithPattern(maxpkforprev, _pkPattern);
     }
-    return createPartition(txn, maxpkforprev, BSONObj());
+    return createPartitionInternal(txn, maxpkforprev, BSONObj());
 }
 
 Status PartitionedCollection::createPartition(OperationContext*txn, const BSONObj& maxpkforprev, const BSONObj &partitionInfo) {
+    BSONObj minnewpk;
+    bool ret = getMaxPKForPartitionCap(txn, minnewpk);
+    if (ret) {
+        // if there are any records in the last partition
+        // then maxpkforprev should be greater or equal than maximum existing pk
+        uassert(19192, "newMax value should be greater or equal than any existing key in the collection",
+                maxpkforprev.woCompare(fillPKWithFieldsWithPattern(minnewpk, _pkPattern), _pkPattern) >= 0);
+    }
+    else if (_partitions.size() > 1) {
+        // if there are penultimate partition
+        // then maxpkforprev should be greater than its maxpk value
+        // fill result with penultimate partition's pivot
+        uassert(19193, "newMax value should be greater than penultimate partition's max value",
+                maxpkforprev.woCompare((_partitions.crbegin() + 1)->maxpk, _pkPattern) > 0);
+    }
+    return createPartitionInternal(txn, maxpkforprev, partitionInfo);
+}
+
+Status PartitionedCollection::createPartitionInternal(OperationContext*txn, const BSONObj& maxpkforprev, const BSONObj &partitionInfo) {
     if (partitionInfo.isEmpty()) {
         int64_t id = 0;
         if (_partitions.size() > 0) {

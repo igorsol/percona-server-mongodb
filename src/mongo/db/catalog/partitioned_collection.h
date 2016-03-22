@@ -103,6 +103,7 @@ public:
                                         OpDebug* debug) override;
 
 private:
+    Status createPartitionInternal(OperationContext* txn, const BSONObj& newPivot, const BSONObj &partitionInfo);
     void dropPartitionInternal(OperationContext* txn, int64_t id);
     BSONObj getValidatedPKFromObject(OperationContext* txn, const BSONObj &obj);
     BSONObj getPK(const BSONObj& doc) const;
