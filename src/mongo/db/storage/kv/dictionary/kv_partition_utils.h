@@ -1,4 +1,4 @@
-// kv_record_store_partitioned.h
+// kv_partition_utils.h
 
 /*======
 This file is part of Percona Server for MongoDB.

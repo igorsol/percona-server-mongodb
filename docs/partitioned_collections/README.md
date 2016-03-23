@@ -17,4 +17,3 @@ If you have a use case for a TTL index on a collection, and all documents will h
 Information on partitioning concepts and operation is in the [Concepts document](concepts.md).
 
 Information on partition-related commands is in the [Partitioned Collections Commands document](commands.md).
-

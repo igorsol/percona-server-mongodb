@@ -1,4 +1,4 @@
-// kv_record_store_partitioned.cpp
+// kv_partition_utils.cpp
 
 /*======
 This file is part of Percona Server for MongoDB.
