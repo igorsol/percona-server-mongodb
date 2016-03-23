@@ -169,7 +169,7 @@ namespace mongo {
 
             // abstract methods which implementation depends on _dir value
             virtual void setLocation(const RecordId id) = 0;
-            virtual void advancePartition(const RecordId& loc = RecordId()) = 0;
+            virtual void advancePartition(RecordId loc = RecordId()) = 0;
             virtual bool isLastPartition() const = 0;
 
         public:
@@ -215,11 +215,13 @@ namespace mongo {
                 return it == _rs._partitions.cend();
             }
 
-            void advancePartition(const RecordId& loc = RecordId()) override {
-                invariant(!isLastPartition());
-                delete _rIt;
-                _rIt = (*it)->getIterator(_txn, loc);
-                ++it;
+            void advancePartition(RecordId loc = RecordId()) override {
+                while ((!_rIt || _rIt->isEOF()) && !isLastPartition()) {
+                    delete _rIt;
+                    _rIt = (*it)->getIterator(_txn, loc);
+                    loc = RecordId();
+                    ++it;
+                }
             }
 
         public:
@@ -257,11 +259,14 @@ namespace mongo {
                 return it == _rs._partitions.crend();
             }
 
-            void advancePartition(const RecordId& loc = RecordId()) override {
-                invariant(!isLastPartition());
-                delete _rIt;
-                _rIt = (*it)->getIterator(_txn, loc, CollectionScanParams::BACKWARD);
-                ++it;
+            void advancePartition(RecordId loc = RecordId()) override {
+                while ((!_rIt || _rIt->isEOF()) && !isLastPartition()) {
+                    invariant(!isLastPartition());
+                    delete _rIt;
+                    _rIt = (*it)->getIterator(_txn, loc, CollectionScanParams::BACKWARD);
+                    loc = RecordId();
+                    ++it;
+                }
             }
 
         public:

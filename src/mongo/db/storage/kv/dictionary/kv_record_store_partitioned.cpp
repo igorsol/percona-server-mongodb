@@ -366,6 +366,7 @@ namespace mongo {
     }
 
     bool KVRecordStorePartitioned::KVRecordIteratorPartitioned::isEOF() {
+        invariant((_rIt && !_rIt->isEOF()) || isLastPartition());
         return !_rIt || _rIt->isEOF();
     }
 
@@ -407,9 +408,7 @@ namespace mongo {
         result = _rIt->getNext();
 
         // and move the iterator to the next item from the collection
-        while (_rIt->isEOF() && !isLastPartition()) {
-            advancePartition();
-        }
+        advancePartition();
         return result;
     }
 
