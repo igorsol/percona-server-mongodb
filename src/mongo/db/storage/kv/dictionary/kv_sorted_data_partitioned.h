@@ -121,6 +121,8 @@ namespace mongo {
         // owned instances of KVSortedDataImpl for each partition
         std::deque<SortedDataInterface*> _partitions;
 
+    private:
+        class DropPartitionChange;
     };
 
 } // namespace mongo

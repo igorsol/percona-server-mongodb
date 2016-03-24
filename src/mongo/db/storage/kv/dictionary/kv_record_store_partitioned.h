@@ -306,6 +306,9 @@ namespace mongo {
 
         // owned instances of KVRecordStore for each partition
         std::deque<RecordStore*> _partitions;
+
+    private:
+        class DropPartitionChange;
     };
 
 } // namespace mongo

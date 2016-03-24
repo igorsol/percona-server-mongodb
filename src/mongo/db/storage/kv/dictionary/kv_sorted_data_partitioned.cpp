@@ -177,15 +177,32 @@ namespace mongo {
         _partitionIDs.push_back(id);
     }
 
+    class KVSortedDataPartitioned::DropPartitionChange : public RecoveryUnit::Change {
+    public:
+        DropPartitionChange(OperationContext* txn,
+                          KVEngineImpl* kvEngine,
+                          const std::string& ident)
+            : _txn(txn), _kvEngine(kvEngine), _ident(ident) {}
+
+        virtual void rollback() {}
+        virtual void commit() {
+            _kvEngine->dropIdent(_txn, _ident);
+        }
+
+        OperationContext* const _txn;
+        KVEngineImpl* _kvEngine;
+        const std::string _ident;
+    };
+
     void KVSortedDataPartitioned::dropPartition(OperationContext* txn, int64_t id) {
         for (auto i = _partitionIDs.begin(); i != _partitionIDs.end(); ++i)
         {
             if (*i == id) {
-                _kvEngine->dropIdent(txn, getPartitionName(_ident, id));
                 auto sdi = _partitions.begin() + (i - _partitionIDs.begin());
                 delete *sdi;
                 _partitions.erase(sdi);
                 _partitionIDs.erase(i);
+                txn->recoveryUnit()->registerChange(new DropPartitionChange(txn, _kvEngine, getPartitionName(_ident, id)));
                 break;
             }
         }

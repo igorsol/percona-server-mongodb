@@ -21,9 +21,12 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 ======= */
 
 #include "mongo/db/auth/action_type.h"
+#include "mongo/db/background.h"
 #include "mongo/db/catalog/partitioned_collection.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/curop.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/ops/insert.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/replication_coordinator_global.h"
@@ -60,58 +63,70 @@ namespace mongo {
                 return false;
             }
 
-            std::string coll = cmdObj[ "dropPartition" ].valuestrsafe();
+            const std::string nsToDrop = parseNsCollectionRequired(dbname, cmdObj);
+            const std::string coll = cmdObj[ "dropPartition" ].valuestrsafe();
             uassert( 19184, "dropPartition must specify a collection", !coll.empty() );
             std::string ns = dbname + "." + coll;
             BSONElement force = cmdObj["force"];
             bool isOplogNS = (strcmp(ns.c_str(), repl::rsoplog) == 0);
-            uassert( 19185, "cannot manually drop partition on oplog or oplog.refs", force.trueValue() || !isOplogNS);
+            uassert( 19185, "cannot manually drop partition on oplog or oplog.refs",
+                    force.trueValue() || !isOplogNS);
 
-            ScopedTransaction transaction(txn, MODE_IX);
-            AutoGetDb autoDb(txn, dbname, MODE_X);
+            MONGO_WRITE_CONFLICT_RETRY_LOOP_BEGIN {
+                ScopedTransaction transaction(txn, MODE_IX);
+                AutoGetDb autoDb(txn, dbname, MODE_X);
 
-            if (!fromRepl &&
-                !repl::getGlobalReplicationCoordinator()->canAcceptWritesForDatabase(dbname)) {
-                return appendCommandStatus(result,
-                                           Status(ErrorCodes::NotMaster,
-                                                  str::stream()
-                                                      << "Not primary while adding partition to " << ns));
-            }
+                Client::Context context(txn, nsToDrop);
+                if (!fromRepl &&
+                    !repl::getGlobalReplicationCoordinator()->canAcceptWritesForDatabase(dbname)) {
+                    return appendCommandStatus(result,
+                                               Status(ErrorCodes::NotMaster,
+                                                      str::stream()
+                                                          << "Not primary while dropping partition of " << ns));
+                }
 
-            Database* const db = autoDb.getDb();
+                Database* const db = autoDb.getDb();
 
-            if (!db) {
-                return appendCommandStatus(result,
-                                           Status(ErrorCodes::NamespaceNotFound,
-                                                  str::stream() << "database " << dbname << " does not exist"));
-            }
+                if (!db) {
+                    return appendCommandStatus(result,
+                                               Status(ErrorCodes::NamespaceNotFound,
+                                                      str::stream() << "database " << dbname << " does not exist"));
+                }
 
-            Collection *cl = db->getCollection( ns );
-            uassert( 19186, "dropPartition no such collection", cl );
-            uassert( 19187, "collection must be partitioned", cl->isPartitioned() );
+                Collection *cl = db->getCollection( ns );
+                uassert( 19186, "dropPartition no such collection", cl );
+                uassert( 19187, "collection must be partitioned", cl->isPartitioned() );
 
-            BSONElement idElem = cmdObj["id"];
-            BSONElement maxElem = cmdObj["max"];
-            WriteUnitOfWork wunit(txn);
-            if (idElem.ok() ==  maxElem.ok()) {
-                errmsg = "must provide either an id or a max key of data to be dropped";
-                return false;
-            }
-            else if (idElem.ok()) {
-                if (!idElem.isNumber()) {
-                    errmsg = "invalid id";
+                BackgroundOperation::assertNoBgOpInProgForNs(nsToDrop);
+
+                BSONElement idElem = cmdObj["id"];
+                BSONElement maxElem = cmdObj["max"];
+                WriteUnitOfWork wunit(txn);
+                if (idElem.ok() ==  maxElem.ok()) {
+                    errmsg = "must provide either an id or a max key of data to be dropped";
                     return false;
                 }
-                uint64_t partitionID = idElem.numberLong();
-                cl->dropPartition(txn, partitionID);
+                else if (idElem.ok()) {
+                    if (!idElem.isNumber()) {
+                        errmsg = "invalid id";
+                        return false;
+                    }
+                    int64_t partitionID = idElem.numberLong();
+                    cl->dropPartition(txn, partitionID);
+                }
+                else {
+                    verify(maxElem.ok());
+                    BSONObj pivot = maxElem.embeddedObjectUserCheck();
+                    fixDocumentForInsert(pivot);
+                    cl->dropPartitionsLEQ(txn, pivot);
+                }
+
+                if (!fromRepl) {
+                    repl::logOp(txn, "c", (dbname + ".$cmd").c_str(), cmdObj);
+                }
+                wunit.commit();
             }
-            else {
-                verify(maxElem.ok());
-                BSONObj pivot = maxElem.embeddedObjectUserCheck();
-                fixDocumentForInsert(pivot);
-                cl->dropPartitionsLEQ(txn, pivot);
-            }
-            wunit.commit();
+            MONGO_WRITE_CONFLICT_RETRY_LOOP_END(txn, "dropPartition", nsToDrop);
             return true;
         }
 
