@@ -86,8 +86,6 @@ public:
     };
 
     struct MetaData {
-        MetaData();
-
         void parse(const BSONObj& obj);
         BSONObj toBSON() const;
 

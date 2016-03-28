@@ -37,9 +37,8 @@
 namespace mongo {
 
 struct CollectionOptions {
-    CollectionOptions(PartitionMetaData::deque* partitions = nullptr)
-        : _partitions(partitions),
-          partitionId(0) {
+    CollectionOptions()
+        : partitionId(0) {
         reset();
     }
 
@@ -98,9 +97,6 @@ struct CollectionOptions {
     // primary key pattern for partitioned collection
     // empty value means '_id' primary key
     BSONObj primaryKey;
-
-    // partitions MetaData attached to this options instance
-    const PartitionMetaData::deque* _partitions;
 
     // when passed to KVEngineImpl::getRecordStore this value specifies partition Id
     int64_t partitionId;

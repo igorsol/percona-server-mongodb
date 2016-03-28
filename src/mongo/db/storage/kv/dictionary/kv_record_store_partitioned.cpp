@@ -46,7 +46,6 @@ namespace mongo {
     {
         // partition options
         _partitionOptions.partitioned = false;
-        _partitionOptions._partitions = nullptr;
     }
 
     Status KVRecordStorePartitioned::createPartition(OperationContext* txn, int64_t id) {
