@@ -31,9 +31,9 @@
 #include "mongo/db/storage/kv/kv_collection_catalog_entry.h"
 
 #include "mongo/db/index/index_descriptor.h"
-#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 #include "mongo/db/storage/kv/kv_catalog.h"
 #include "mongo/db/storage/kv/kv_engine.h"
+#include "mongo/db/storage/kv/kv_partition_utils.h"
 
 namespace mongo {
 

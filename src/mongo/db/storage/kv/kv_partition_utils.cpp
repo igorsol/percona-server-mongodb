@@ -21,7 +21,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 ======= */
 
 #include "mongo/bson/util/builder.h"
-#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
+#include "mongo/db/storage/kv/kv_partition_utils.h"
 
 namespace mongo {
 

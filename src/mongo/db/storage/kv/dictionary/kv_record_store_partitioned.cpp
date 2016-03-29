@@ -26,7 +26,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
-#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
+#include "mongo/db/storage/kv/kv_partition_utils.h"
 
 #include "mongo/util/log.h"
 

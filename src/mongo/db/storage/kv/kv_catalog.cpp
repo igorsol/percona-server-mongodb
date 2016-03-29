@@ -37,7 +37,7 @@
 
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
+#include "mongo/db/storage/kv/kv_partition_utils.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/platform/random.h"

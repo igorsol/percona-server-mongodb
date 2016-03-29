@@ -26,12 +26,12 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
-#include "mongo/db/storage/kv/dictionary/kv_partition_utils.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_capped.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_partitioned.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_partitioned.h"
+#include "mongo/db/storage/kv/kv_partition_utils.h"
 
 namespace mongo {
 
