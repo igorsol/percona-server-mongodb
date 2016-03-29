@@ -29,7 +29,7 @@ namespace mongo {
         class PartitionCommandBase : public Command {
         public:
             PartitionCommandBase(const char *name) : Command(name) {}
-            virtual bool slaveOk() const { return true; }
+            virtual bool slaveOk() const override { return true; }
             bool currentEngineSupportsPartitionedCollections() const {
                 return storageGlobalParams.engine == "PerconaFT";
             }

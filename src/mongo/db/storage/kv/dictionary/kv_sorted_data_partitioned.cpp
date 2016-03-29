@@ -184,8 +184,8 @@ namespace mongo {
                           const std::string& ident)
             : _txn(txn), _kvEngine(kvEngine), _ident(ident) {}
 
-        virtual void rollback() {}
-        virtual void commit() {
+        virtual void rollback() override {}
+        virtual void commit() override {
             _kvEngine->dropIdent(_txn, _ident);
         }
 
@@ -313,7 +313,7 @@ namespace mongo {
             }
         }
 
-        virtual ~KVSDIPartitionedCursor() {
+        virtual ~KVSDIPartitionedCursor() override {
             _clear_heap();
         }
 

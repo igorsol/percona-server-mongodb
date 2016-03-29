@@ -39,7 +39,7 @@ public:
                            RecordStore* recordStore,     // does not own
                            DatabaseCatalogEntry* dbce);  // does not own
 
-    virtual ~PartitionedCollection();
+    virtual ~PartitionedCollection() override;
 
     // partitioning-specific methods
 

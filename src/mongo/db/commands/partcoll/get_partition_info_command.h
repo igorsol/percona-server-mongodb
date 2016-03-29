@@ -27,18 +27,18 @@ namespace mongo {
         class GetPartitionInfoCommand : public PartitionCommandBase {
         public:
             GetPartitionInfoCommand();
-            virtual bool isWriteCommandForConfigServer() const { return false; }
+            virtual bool isWriteCommandForConfigServer() const override { return false; }
             virtual void addRequiredPrivileges(const std::string& dbname,
                                                const BSONObj& cmdObj,
-                                               std::vector<Privilege>* out);
-            virtual void help(std::stringstream &h) const;
+                                               std::vector<Privilege>* out) override;
+            virtual void help(std::stringstream &h) const override;
             virtual bool run(mongo::OperationContext* txn,
                              const std::string &db,
                              BSONObj &cmdObj,
                              int options,
                              std::string &errmsg,
                              BSONObjBuilder &result,
-                             bool fromRepl);
+                             bool fromRepl) override;
         };
     }
 }

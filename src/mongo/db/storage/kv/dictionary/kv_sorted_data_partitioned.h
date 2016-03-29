@@ -46,10 +46,10 @@ namespace mongo {
               _wuow(txn),
               _dupsAllowed(dupsAllowed)
         {}
-        virtual Status addKey(const BSONObj& key, const RecordId& loc) {
+        virtual Status addKey(const BSONObj& key, const RecordId& loc) override {
             return _impl->insert(_txn, key, loc, _dupsAllowed);
         }
-        virtual void commit(bool mayInterrupt) {
+        virtual void commit(bool mayInterrupt) override {
             _wuow.commit();
         }
     };
@@ -65,33 +65,33 @@ namespace mongo {
     public:
         KVSortedDataPartitioned( OperationContext* opCtx, KVEngineImpl* kvEngine, const StringData& ident, const IndexDescriptor *desc );
 
-        virtual ~KVSortedDataPartitioned();
+        virtual ~KVSortedDataPartitioned() override;
 
-        virtual SortedDataBuilderInterface* getBulkBuilder(OperationContext* txn, bool dupsAllowed);
+        virtual SortedDataBuilderInterface* getBulkBuilder(OperationContext* txn, bool dupsAllowed) override;
 
         virtual Status insert(OperationContext* txn,
                               const BSONObj& key,
                               const RecordId& loc,
-                              bool dupsAllowed);
+                              bool dupsAllowed) override;
 
-        virtual void unindex(OperationContext* txn, const BSONObj& key, const RecordId& loc, bool dupsAllowed);
+        virtual void unindex(OperationContext* txn, const BSONObj& key, const RecordId& loc, bool dupsAllowed) override;
 
-        virtual Status dupKeyCheck(OperationContext* txn, const BSONObj& key, const RecordId& loc);
+        virtual Status dupKeyCheck(OperationContext* txn, const BSONObj& key, const RecordId& loc) override;
 
         virtual void fullValidate(OperationContext* txn, bool full, long long* numKeysOut,
-                                  BSONObjBuilder* output) const;
+                                  BSONObjBuilder* output) const override;
 
-        virtual bool isEmpty(OperationContext* txn);
+        virtual bool isEmpty(OperationContext* txn) override;
 
-        virtual long long numEntries(OperationContext* txn) const;
+        virtual long long numEntries(OperationContext* txn) const override;
 
-        virtual Cursor* newCursor(OperationContext* txn, int direction = 1) const;
+        virtual Cursor* newCursor(OperationContext* txn, int direction = 1) const override;
 
-        virtual Status initAsEmpty(OperationContext* txn);
+        virtual Status initAsEmpty(OperationContext* txn) override;
 
-        virtual long long getSpaceUsedBytes( OperationContext* txn ) const;
+        virtual long long getSpaceUsedBytes( OperationContext* txn ) const override;
 
-        virtual bool appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const;
+        virtual bool appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const override;
 
         // additional methods for partitoned collections
 

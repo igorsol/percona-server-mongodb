@@ -64,7 +64,7 @@ public:
 
     virtual bool isIndexReady(OperationContext* txn, const StringData& indexName) const;
 
-    virtual bool isPartitioned(OperationContext* txn) const;
+    virtual bool isPartitioned(OperationContext* txn) const override;
 
     // ------ for implementors
 

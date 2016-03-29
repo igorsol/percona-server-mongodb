@@ -54,12 +54,12 @@ namespace mongo {
                                  const CollectionOptions& options,
                                  KVSizeStorer *sizeStorer);
 
-        virtual ~KVRecordStorePartitioned();
+        virtual ~KVRecordStorePartitioned() override;
 
         /**
          * Name of the RecordStore implementation.
          */
-        virtual const char* name() const { return _partitions[0]->name(); }
+        virtual const char* name() const override { return _partitions[0]->name(); }
 
         /**
          * Total size of each record id key plus the records stored.
@@ -67,47 +67,47 @@ namespace mongo {
          * TODO: Does this have to be exact? Sometimes it doesn't, sometimes
          *       it cannot be without major performance issues.
          */
-        virtual long long dataSize( OperationContext* txn ) const;
+        virtual long long dataSize( OperationContext* txn ) const override;
 
         /**
          * TODO: Does this have to be exact? Sometimes it doesn't, sometimes
          *       it cannot be without major performance issues.
          */
-        virtual long long numRecords( OperationContext* txn ) const;
+        virtual long long numRecords( OperationContext* txn ) const override;
 
         /**
          * How much space is used on disk by this record store.
          */
         virtual int64_t storageSize( OperationContext* txn,
                                      BSONObjBuilder* extraInfo = NULL,
-                                     int infoLevel = 0 ) const;
+                                     int infoLevel = 0 ) const override;
 
-        virtual RecordData dataFor( OperationContext* txn, const RecordId& loc ) const;
+        virtual RecordData dataFor( OperationContext* txn, const RecordId& loc ) const override;
 
         virtual bool findRecord( OperationContext* txn,
                                  const RecordId& loc,
                                  RecordData* out,
-                                 bool skipPessimisticLocking=false ) const;
+                                 bool skipPessimisticLocking=false ) const override;
 
-        virtual void deleteRecord( OperationContext* txn, const RecordId& dl );
+        virtual void deleteRecord( OperationContext* txn, const RecordId& dl ) override;
 
         virtual StatusWith<RecordId> insertRecord( OperationContext* txn,
                                                   const char* data,
                                                   int len,
-                                                  bool enforceQuota );
+                                                  bool enforceQuota ) override;
 
         virtual StatusWith<RecordId> insertRecord( OperationContext* txn,
                                                   const DocWriter* doc,
-                                                  bool enforceQuota );
+                                                  bool enforceQuota ) override;
 
         virtual StatusWith<RecordId> updateRecord( OperationContext* txn,
                                                   const RecordId& oldLocation,
                                                   const char* data,
                                                   int len,
                                                   bool enforceQuota,
-                                                  UpdateNotifier* notifier );
+                                                  UpdateNotifier* notifier ) override;
 
-        virtual bool updateWithDamagesSupported() const {
+        virtual bool updateWithDamagesSupported() const  override{
             return _partitions[0]->updateWithDamagesSupported();
         }
 
@@ -115,37 +115,37 @@ namespace mongo {
                                           const RecordId& loc,
                                           const RecordData& oldRec,
                                           const char* damageSource,
-                                          const mutablebson::DamageVector& damages );
+                                          const mutablebson::DamageVector& damages ) override;
 
         virtual RecordIterator* getIterator( OperationContext* txn,
                                              const RecordId& start = RecordId(),
                                              const CollectionScanParams::Direction& dir =
-                                             CollectionScanParams::FORWARD ) const;
+                                             CollectionScanParams::FORWARD ) const override;
 
-        virtual std::vector<RecordIterator *> getManyIterators( OperationContext* txn ) const;
+        virtual std::vector<RecordIterator *> getManyIterators( OperationContext* txn ) const override;
 
-        virtual Status truncate( OperationContext* txn );
+        virtual Status truncate( OperationContext* txn ) override;
 
         virtual Status validate( OperationContext* txn,
                                  bool full, bool scanData,
                                  ValidateAdaptor* adaptor,
-                                 ValidateResults* results, BSONObjBuilder* output );
+                                 ValidateResults* results, BSONObjBuilder* output ) override;
 
         virtual void appendCustomStats( OperationContext* txn,
                                         BSONObjBuilder* result,
-                                        double scale ) const;
+                                        double scale ) const override;
 
-        virtual bool isCapped() const { return false; }
+        virtual bool isCapped() const override { return false; }
 
         virtual void temp_cappedTruncateAfter(OperationContext* txn,
                                               RecordId end,
-                                              bool inclusive) {
+                                              bool inclusive) override {
             invariant(false);
         }
 
         virtual void updateStatsAfterRepair(OperationContext* txn,
                                             long long numRecords,
-                                            long long dataSize);
+                                            long long dataSize) override;
 
         Status createPartition(OperationContext* txn, int64_t id);
 
