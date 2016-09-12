@@ -161,6 +161,12 @@ Status addMongodOptions(moe::OptionSection* options) {
         .setSources(moe::SourceYAMLConfig)
         .format("(:?off)|(:?slowOp)|(:?all)", "(off/slowOp/all)");
 
+    general_options.addOptionChaining("operationProfiling.rateLimit",
+                                      "rateLimit",
+                                      moe::Int,
+                                      "rate limiter value for profiling")
+        .setDefault(moe::Value(1));
+
     general_options.addOptionChaining(
                         "cpu", "cpu", moe::Switch, "periodically show cpu and iowait utilization")
         .setSources(moe::SourceAllLegacy);
@@ -1007,6 +1013,21 @@ Status storeMongodOptions(const moe::Environment& params, const std::vector<std:
 
     if (params.count("operationProfiling.slowOpThresholdMs")) {
         serverGlobalParams.slowMS = params["operationProfiling.slowOpThresholdMs"].as<int>();
+    }
+
+    if (params.count("operationProfiling.rateLimit")) {
+        int rateLimit = params["operationProfiling.rateLimit"].as<int>();
+        if (rateLimit == 0)
+            rateLimit = 1;
+        if (1 <= rateLimit && rateLimit <= 1000) {
+            serverGlobalParams.rateLimit = rateLimit;
+        }
+        else {
+            StringBuilder sb;
+            sb << "Bad value for operationProfiling.rateLimit: " << rateLimit
+               << ".  Supported range is 0-1000";
+            return Status(ErrorCodes::BadValue, sb.str());
+        }
     }
 
     if (params.count("storage.syncPeriodSecs")) {
