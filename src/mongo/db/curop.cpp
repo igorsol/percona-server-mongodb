@@ -430,6 +430,8 @@ uint64_t CurOp::MaxTimeTracker::getRemainingMicros() const {
     return _targetEpochMicros - now;
 }
 
+PseudoRandom CurOp::_prng(std::unique_ptr<SecureRandom>(SecureRandom::create())->nextInt64());
+
 namespace {
 StringData getProtoString(int op) {
     if (op == dbQuery) {
@@ -635,6 +637,8 @@ void OpDebug::append(const CurOp& curop,
         b.append("protocol", getProtoString(networkOp));
     }
     b.append("millis", executionTime);
+    b.append("rateLimit",
+             executionTime >= serverGlobalParams.slowMS ? 1 : serverGlobalParams.rateLimit);
 
     execStats.append(b, "execStats");
 }

@@ -35,6 +35,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/server_options.h"
 #include "mongo/platform/atomic_word.h"
+#include "mongo/platform/random.h"
 #include "mongo/util/concurrency/spin_lock.h"
 #include "mongo/util/progress_meter.h"
 #include "mongo/util/thread_safe_string.h"
@@ -298,6 +299,10 @@ public:
         if (_dbprofile <= 0)
             return false;
 
+        if (serverGlobalParams.rateLimit > 1 && _dbprofile >= 2 && ms < serverGlobalParams.slowMS) {
+            return _prng.nextCanonicalDouble() * serverGlobalParams.rateLimit < 1.0;
+        }
+
         return _dbprofile >= 2 || ms >= serverGlobalParams.slowMS;
     }
 
@@ -523,6 +528,9 @@ private:
     uint64_t _maxTimeMicros{0u};
 
     std::string _planSummary;
+
+    // Pseudo RNG for rate limiter feature
+    static PseudoRandom _prng;
 
     /** Nested class that implements tracking of a time limit for a CurOp object. */
     class MaxTimeTracker {
