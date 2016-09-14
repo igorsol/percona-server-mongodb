@@ -314,7 +314,7 @@ public:
                                        const BSONObj& cmdObj) {
         AuthorizationSession* authzSession = AuthorizationSession::get(client);
 
-        if (cmdObj.firstElement().numberInt() == -1 && !cmdObj.hasField("slowms")) {
+        if (cmdObj.firstElement().numberInt() == -1 && !cmdObj.hasField("slowms") && !cmdObj.hasField("ratelimit")) {
             // If you just want to get the current profiling level you can do so with just
             // read access to system.profile, even if you can't change the profiling level.
             if (authzSession->isAuthorizedForActionsOnResource(
@@ -349,6 +349,7 @@ public:
         BSONElement e = cmdObj.firstElement();
         result.append("was", db ? db->getProfilingLevel() : serverGlobalParams.defaultProfile);
         result.append("slowms", serverGlobalParams.slowMS);
+        result.append("ratelimit", serverGlobalParams.rateLimit);
 
         int p = (int)e.number();
         Status status = Status::OK();
@@ -365,6 +366,16 @@ public:
         const BSONElement slow = cmdObj["slowms"];
         if (slow.isNumber()) {
             serverGlobalParams.slowMS = slow.numberInt();
+        }
+
+        const BSONElement ratelimitelem = cmdObj["ratelimit"];
+        if (ratelimitelem.isNumber()) {
+            int rateLimit = ratelimitelem.numberInt();
+            if (rateLimit == 0)
+                rateLimit = 1;
+            if (1 <= rateLimit && rateLimit <= 1000) {
+                serverGlobalParams.rateLimit = rateLimit;
+            }
         }
 
         if (!status.isOK()) {
