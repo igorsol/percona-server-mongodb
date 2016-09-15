@@ -35,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/bson/util/builder.h"
 #include "mongo/config.h"
@@ -43,6 +44,7 @@
 #include "mongo/db/repl/repl_settings.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/server_options_helpers.h"
+#include "mongo/db/server_parameters.h"
 #include "mongo/db/storage/mmap_v1/mmap_v1_options.h"
 #include "mongo/s/catalog/catalog_manager.h"
 #include "mongo/logger/console_appender.h"
@@ -1336,5 +1338,67 @@ void setGlobalReplSettings(const repl::ReplSettings& settings) {
 const repl::ReplSettings& getGlobalReplSettings() {
     return globalReplSettings;
 }
+
+// Allow rateLimit access via setParameter/getParameter
+namespace {
+
+class RateLimitParameter : public ServerParameter
+{
+    MONGO_DISALLOW_COPYING(RateLimitParameter);
+
+public:
+    RateLimitParameter(ServerParameterSet* sps);
+    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name);
+    virtual Status set(const BSONElement& newValueElement);
+    virtual Status setFromString(const std::string& str);
+
+private:
+    Status _set(int rateLimit);
+};
+
+MONGO_INITIALIZER_GENERAL(InitRateLimitParameter,
+                          MONGO_NO_PREREQUISITES,
+                          ("BeginStartupOptionParsing"))(InitializerContext*) {
+    new RateLimitParameter(ServerParameterSet::getGlobal());
+    return Status::OK();
+}
+
+RateLimitParameter::RateLimitParameter(ServerParameterSet* sps)
+    : ServerParameter(sps, "profilingRateLimit", true, true) {}
+
+void RateLimitParameter::append(OperationContext* txn,
+                                   BSONObjBuilder& b,
+                                   const std::string& name) {
+    b.append(name, serverGlobalParams.rateLimit);
+}
+
+Status RateLimitParameter::set(const BSONElement& newValueElement) {
+    if (!newValueElement.isNumber()) {
+        return Status(ErrorCodes::BadValue, str::stream() << name() << " has to be a number");
+    }
+    return _set(newValueElement.numberInt());
+}
+
+Status RateLimitParameter::setFromString(const std::string& newValueString) {
+    int num = 0;
+    Status status = parseNumberFromString(newValueString, &num);
+    if (!status.isOK()) return status;
+    return _set(num);
+}
+
+Status RateLimitParameter::_set(int rateLimit) {
+    if (rateLimit == 0)
+        rateLimit = 1;
+    if (1 <= rateLimit && rateLimit <= 1000) {
+        serverGlobalParams.rateLimit = rateLimit;
+        return Status::OK();
+    }
+    StringBuilder sb;
+    sb << "Bad value for profilingRateLimit: " << rateLimit
+       << ".  Supported range is 0-1000";
+    return Status(ErrorCodes::BadValue, sb.str());
+}
+
+}  // namespace
 
 }  // namespace mongo
