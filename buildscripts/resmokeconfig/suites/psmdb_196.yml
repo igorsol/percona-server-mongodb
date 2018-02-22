@@ -124,4 +124,5 @@ executor:
       set_parameters:
         enableTestCommands: 1
         numInitialSyncAttempts: 1
-    num_nodes: 2
+    all_nodes_electable: true
+    num_nodes: 3
