@@ -1,7 +1,7 @@
 /*======
 This file is part of Percona Server for MongoDB.
 
-Copyright (c) 2006, 2016, Percona and/or its affiliates. All rights reserved.
+Copyright (c) 2006, 2018, Percona and/or its affiliates. All rights reserved.
 
     Percona Server for MongoDB is free software: you can redistribute
     it and/or modify it under the terms of the GNU Affero General
@@ -20,15 +20,21 @@ Copyright (c) 2006, 2016, Percona and/or its affiliates. All rights reserved.
 
 #pragma once
 
-#include "mongo/db/backup/backupable.h"
-#include "mongo/engine_features.h"
-
 namespace percona {
 
 /**
- * Storage engine extension interface.
+ * The interface which provides the ability to query
+ * engine features.
  */
-class EngineExtension : public Backupable, public EngineFeatures {
+struct EngineFeatures {
+    virtual ~EngineFeatures() {}
+
+    /**
+     * Returns whether the engine supports feature compatibility version 3.6
+     */
+    virtual bool isFcv36Supported() const {
+        return true;
+    }
 };
 
 }  // end of percona namespace.

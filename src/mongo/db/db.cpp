@@ -1025,6 +1025,10 @@ ExitCode _initAndListen(int listenPort) {
         return EXIT_NET_ERROR;
     }
 
+    if (!serviceContext->getGlobalStorageEngine()->isFcv36Supported()) {
+        serverGlobalParams.featureCompatibility.reset();
+    }
+
     serviceContext->notifyStartupComplete();
 
 #ifndef _WIN32

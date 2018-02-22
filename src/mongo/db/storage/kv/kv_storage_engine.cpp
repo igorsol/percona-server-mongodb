@@ -71,6 +71,10 @@ Status KVStorageEngine::hotBackup(const std::string& path) {
     return _engine->hotBackup(path);
 }
 
+bool KVStorageEngine::isFcv36Supported() const {
+    return _engine->isFcv36Supported();
+}
+
 KVStorageEngine::KVStorageEngine(
     KVEngine* engine,
     const KVStorageEngineOptions& options,
