@@ -237,7 +237,7 @@ void FeatureCompatibilityVersion::setIfCleanStartup(OperationContext* opCtx,
         repl::TimestampedBSONObj{
             BSON("_id" << FeatureCompatibilityVersion::kParameterName
                        << FeatureCompatibilityVersion::kVersionField
-                       << (storeUpgradeVersion
+                       << (storeUpgradeVersion && opCtx->getServiceContext()->getGlobalStorageEngine()->isFcv36Supported()
                                ? FeatureCompatibilityVersionCommandParser::kVersion36
                                : FeatureCompatibilityVersionCommandParser::kVersion34)),
             Timestamp()},
