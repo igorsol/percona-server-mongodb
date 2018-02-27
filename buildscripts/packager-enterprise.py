@@ -26,20 +26,15 @@
 # apt-get install dpkg-dev rpm debhelper fakeroot ia32-libs createrepo git-core libsnmp15
 # echo "Now put the dist gnupg signing keys in ~root/.gnupg"
 
-import argparse
 import errno
-import getopt
 from glob import glob
 import packager
 import os
 import re
 import shutil
-import stat
-import subprocess
 import sys
 import tempfile
 import time
-import urlparse
 
 # The MongoDB names for the architectures we support.
 ARCH_CHOICES=["x86_64", "ppc64le", "s390x", "arm64"]
@@ -158,6 +153,7 @@ def main(argv):
     os.chdir(prefix)
     try:
       made_pkg = False
+
       # Build a package for each distro/spec/arch tuple, and
       # accumulate the repository-layout directories.
       for (distro, arch) in packager.crossproduct(distros, args.arches):
@@ -167,7 +163,7 @@ def main(argv):
 
               filename = tarfile(build_os, arch, spec)
               packager.ensure_dir(filename)
-              shutil.copyfile(args.tarball, filename)
+              shutil.copyfile(args.tarball,filename)
 
               repo = make_package(distro, build_os, arch, spec, srcdir)
               make_repo(repo, distro, build_os, spec)

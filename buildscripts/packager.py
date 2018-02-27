@@ -356,7 +356,7 @@ def main(argv):
 
               filename = tarfile(build_os, arch, spec)
               ensure_dir(filename)
-              shutil.copyfile(args.tarball, filename)
+              shutil.copyfile(args.tarball,filename)
 
               repo = make_package(distro, build_os, arch, spec, srcdir)
               make_repo(repo, distro, build_os, spec)
@@ -709,7 +709,7 @@ def make_rpm(distro, build_os, arch, spec, srcdir):
         # This hard-coded hooey came from some box running RPM
         # 4.4.2.3.  It may not work over time, but RPM isn't sanely
         # configurable.
-        flags=["--macros", "/usr/lib/rpm/macros:/usr/lib/rpm/%s-linux/macros:/usr/lib/rpm/suse/macros:/etc/rpm/macros.*:/etc/rpm/macros:/etc/rpm/%s-linux/macros:~/.rpmmacros:%s" % (distro_arch, distro_arch, macropath)]
+        flags=["--macros", "/usr/lib/rpm/macros:/usr/lib/rpm/%s-linux/macros:/etc/rpm/macros.*:/etc/rpm/macros:/etc/rpm/%s-linux/macros:~/.rpmmacros:%s" % (distro_arch, distro_arch, macropath)]
     # Put the specfile and the tar'd up binaries and stuff in
     # place.
     #
