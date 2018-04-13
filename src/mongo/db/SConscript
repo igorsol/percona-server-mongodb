@@ -2,7 +2,6 @@
 
 Import("env")
 Import("has_option")
-Import("rocksdb")
 Import("wiredtiger")
 Import("inmemory")
 
@@ -859,7 +858,6 @@ env.Library(
         "storage/inmemory/storage_inmemory" if inmemory else [],
         "storage/mmap_v1/mmap",
         "storage/mmap_v1/storage_mmapv1",
-        "storage/rocks/storage_rocks" if rocksdb else [],
         "storage/storage_engine_lock_file",
         "storage/storage_engine_metadata",
         "storage/storage_init_d",

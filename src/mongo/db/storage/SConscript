@@ -1,6 +1,5 @@
 # -*- mode: python -*-
 Import("env")
-Import("rocksdb")
 
 env = env.Clone()
 
@@ -17,9 +16,6 @@ env.SConscript(
         'env'
     ],
 )
-
-if rocksdb:
-    env.SConscript(dirs='rocks', exports='env')
 
 env.Library(
     target='journal_listener',
