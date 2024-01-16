@@ -1195,6 +1195,7 @@ env.Library(
         'initial_syncer.cpp',
         'initial_syncer_common_stats.cpp',
         'initial_syncer_factory.cpp',
+        'initial_syncer_fcb.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/client/clientdriver_network',
