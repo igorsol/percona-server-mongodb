@@ -27,6 +27,7 @@
  */
 
 #include <lz4.h>
+#include <lz4hc.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -123,6 +124,26 @@ lz4_error(
 }
 
 /*
+*/
+static int
+lz4_prefix_dump_ex(WT_COMPRESSOR *compressor, WT_SESSION *session, const char *descr, LZ4_PREFIX *prefix, int m, int n)
+{
+    WT_EXTENSION_API *wt_api;
+
+    wt_api = ((LZ4_COMPRESSOR *)compressor)->wt_api;
+
+    (void)wt_api->msg_printf(wt_api, session,
+                             "%s: compressed: %d, uncompressed: %d, useful: %d, unused: %d (%d/%d)",
+                             descr, prefix->compressed_len, prefix->uncompressed_len, prefix->useful_len, prefix->unused, m, n);
+    return 0;
+}
+static int
+lz4_prefix_dump(WT_COMPRESSOR *compressor, WT_SESSION *session, const char *descr, LZ4_PREFIX *prefix)
+{
+    return lz4_prefix_dump_ex(compressor, session, descr, prefix, 0, 0);
+}
+
+/*
  *  lz4_compress --
  *	WiredTiger LZ4 compression.
  */
@@ -164,6 +185,51 @@ lz4_compress(WT_COMPRESSOR *compressor, WT_SESSION *session,
 
 	*compression_failed = 1;
 	return (0);
+}
+
+/*
+ *  lz4hc_compress --
+ *	WiredTiger LZ4HC compression.
+ */
+static int
+lz4hc_compress(WT_COMPRESSOR *compressor, WT_SESSION *session,
+    uint8_t *src, size_t src_len,
+    uint8_t *dst, size_t dst_len,
+    size_t *result_lenp, int *compression_failed)
+{
+    LZ4_PREFIX prefix;
+    int lz4_len;
+
+    (void)compressor;                /* Unused parameters */
+    (void)session;
+    (void)dst_len;
+
+    /* Compress, starting after the prefix bytes. */
+    lz4_len = LZ4_compressHC(
+       (const char *)src, (char *)dst + sizeof(LZ4_PREFIX), (int)src_len);
+
+    /*
+     * If compression succeeded and the compressed length is smaller than
+     * the original size, return success.
+     */
+    if (lz4_len != 0 && (size_t)lz4_len + sizeof(LZ4_PREFIX) < src_len) {
+        prefix.compressed_len = (uint32_t)lz4_len;
+        prefix.uncompressed_len = (uint32_t)src_len;
+        prefix.useful_len = (uint32_t)src_len;
+        prefix.unused = 0;
+        lz4_prefix_dump(compressor, session, "lz4hc_compress", &prefix);
+#ifdef WORDS_BIGENDIAN
+        lz4_prefix_swap(&prefix);
+#endif
+        memcpy(dst, &prefix, sizeof(LZ4_PREFIX));
+
+        *result_lenp = (size_t)lz4_len + sizeof(LZ4_PREFIX);
+        *compression_failed = 0;
+        return (0);
+    }
+
+    *compression_failed = 1;
+    return (0);
 }
 
 /*
@@ -237,6 +303,147 @@ lz4_decompress(WT_COMPRESSOR *compressor, WT_SESSION *session,
 	return (
 	    lz4_error(compressor, session, "LZ4 decompress error", decoded));
 }
+
+
+/*
+ * lz4hc_decompress --
+ *  WiredTiger LZ4HC decompression.
+ */
+static int
+lz4hc_decompress(WT_COMPRESSOR *compressor, WT_SESSION *session,
+    uint8_t *src, size_t src_len,
+    uint8_t *dst, size_t dst_len,
+    size_t *result_lenp)
+{
+    WT_EXTENSION_API *wt_api;
+    LZ4_PREFIX prefix;
+    int decoded;
+    int out_len;
+    uint8_t *dst_tmp;
+
+    /*
+     * Retrieve the true length of the compressed block and source and the
+     * decompressed bytes to return from the start of the source buffer.
+     */
+    memcpy(&prefix, src, sizeof(LZ4_PREFIX));
+#ifdef WORDS_BIGENDIAN
+    lz4_prefix_swap(&prefix);
+#endif
+    lz4_prefix_dump(compressor, session, "lz4hc_decompress", &prefix);
+
+    if (prefix.unused == 0) {
+        return lz4_decompress(compressor, session, src, src_len, dst, dst_len, result_lenp);
+    }
+
+    wt_api = ((LZ4_COMPRESSOR *)compressor)->wt_api;
+
+    if (prefix.compressed_len + sizeof(LZ4_PREFIX) > src_len) {
+        (void)wt_api->err_printf(wt_api,
+            session,
+            "WT_COMPRESSOR.decompress: stored size exceeds source "
+            "size");
+        return (WT_ERROR);
+    }
+
+    /*
+     * Decompress, starting after the prefix bytes. Use safe decompression:
+     * we rely on decompression to detect corruption.
+     *
+     * Two code paths, one with and one without a bounce buffer. When doing
+     * raw compression, we compress to a target size irrespective of row
+     * boundaries, and return to our caller a "useful" compression length
+     * based on the last complete row that was compressed. Our caller stores
+     * that length, not the length of bytes actually compressed by LZ4. In
+     * other words, our caller doesn't know how many bytes will result from
+     * decompression, likely hasn't provided us a large enough buffer, and
+     * we have to allocate a scratch buffer.
+     */
+    if (dst_len < prefix.uncompressed_len) {
+        if ((dst_tmp = wt_api->scr_alloc(
+           wt_api, session, (size_t)prefix.uncompressed_len)) == NULL)
+            return (ENOMEM);
+
+        //decoded = LZ4_decompress_safe(
+        //    (const char *)src + sizeof(LZ4_PREFIX), (char *)dst_tmp,
+        //    (int)prefix.compressed_len, (int)prefix.uncompressed_len);
+        //decoded = LZ4_decompress_safe_usingDict(
+        //    (const char *)src + sizeof(LZ4_PREFIX), (char *)dst_tmp,
+        //    (int)prefix.compressed_len, (int)prefix.uncompressed_len,
+        //    NULL, 0);
+        LZ4_streamDecode_t* stream = LZ4_createStreamDecode();
+        uint32_t dataleft = prefix.compressed_len;
+        size_t dstleft = dst_len;
+        const char *data = (const char *)src + sizeof(LZ4_PREFIX);
+        char *out_tmp = (char *)dst_tmp;
+        decoded = 0;
+        while (dataleft > 0) {
+#ifdef WORDS_BIGENDIAN
+            uint32_t lz4_len = lz4_bswap32(*(uint32_t *)data);
+#else
+            uint32_t lz4_len = *(uint32_t *)data;
+#endif
+            data += sizeof(lz4_len);
+            dataleft -= sizeof(lz4_len);
+
+            out_len = LZ4_decompress_safe_continue(stream,
+                data, out_tmp, lz4_len, dstleft);
+
+            data += lz4_len;
+            dataleft -= lz4_len;
+            dstleft -= out_len;
+            out_tmp += out_len;
+            decoded += out_len;
+        }
+        LZ4_freeStreamDecode(stream);
+
+        if (decoded >= 0)
+            memcpy(dst, dst_tmp, dst_len);
+        wt_api->scr_free(wt_api, session, dst_tmp);
+    } else
+        //decoded = LZ4_decompress_safe(
+        //    (const char *)src + sizeof(LZ4_PREFIX),
+        //    (char *)dst, (int)prefix.compressed_len, (int)dst_len);
+        //decoded = LZ4_decompress_safe_usingDict(
+        //    (const char *)src + sizeof(LZ4_PREFIX),
+        //    (char *)dst, (int)prefix.compressed_len, (int)dst_len,
+        //    NULL, 0);
+    {
+        LZ4_streamDecode_t* stream = LZ4_createStreamDecode();
+        uint32_t dataleft = prefix.compressed_len;
+        size_t dstleft = dst_len;
+        const char *data = (const char *)src + sizeof(LZ4_PREFIX);
+        char *out_tmp = (char *)dst;
+        decoded = 0;
+        while (dataleft > 0) {
+#ifdef WORDS_BIGENDIAN
+            uint32_t lz4_len = lz4_bswap32(*(uint32_t *)data);
+#else
+            uint32_t lz4_len = *(uint32_t *)data;
+#endif
+            data += sizeof(lz4_len);
+            dataleft -= sizeof(lz4_len);
+
+            out_len = LZ4_decompress_safe_continue(stream,
+                data, out_tmp, lz4_len, dstleft);
+
+            data += lz4_len;
+            dataleft -= lz4_len;
+            dstleft -= out_len;
+            out_tmp += out_len;
+            decoded += out_len;
+        }
+        LZ4_freeStreamDecode(stream);
+    }
+
+    if (decoded >= 0) {
+        *result_lenp = prefix.useful_len;
+        return (0);
+    }
+
+    return (
+        lz4_error(compressor, session, "LZ4 decompress error", decoded));
+}
+
 
 /*
  * lz4_find_slot --
@@ -334,6 +541,94 @@ lz4_compress_raw(WT_COMPRESSOR *compressor, WT_SESSION *session,
 	return (0);
 }
 
+
+static int
+lz4hc_raw_dump(WT_COMPRESSOR *compressor, WT_SESSION *session, const char *descr, uint32_t *offsets, uint32_t slots, size_t dst_len)
+{
+    WT_EXTENSION_API *wt_api;
+
+    wt_api = ((LZ4_COMPRESSOR *)compressor)->wt_api;
+
+    (void)wt_api->msg_printf(wt_api, session,
+                             "%s: slots: %d, offsets[slots]: %d, dst_len: %d",
+                             descr, slots, offsets[slots], (int)dst_len);
+    return 0;
+}
+
+/*
+ * lz4hc_compress_raw --
+ *	Pack records into a specified on-disk page size.
+ */
+static int
+lz4hc_compress_raw(WT_COMPRESSOR *compressor, WT_SESSION *session,
+    size_t page_max, int split_pct, size_t extra,
+    uint8_t *src, uint32_t *offsets, uint32_t slots,
+    uint8_t *dst, size_t dst_len, int final,
+    size_t *result_lenp, uint32_t *result_slotsp)
+{
+    const int compression_level = -1; /* use default compression level */
+    LZ4_PREFIX prefix;
+    int lz4_len, sourceSize, targetDestSize;
+
+    (void)compressor;               /* Unused parameters */
+    (void)session;
+    (void)split_pct;
+    (void)final;
+
+    //lz4hc_raw_dump(compressor, session, "lz4hc_compress_raw", offsets, slots, dst_len);
+
+    /*
+     * Set the source and target sizes. The target size is complicated: we
+     * don't want to exceed the smaller of the maximum page size or the
+     * destination buffer length, and in both cases we have to take into
+     * account the space for our overhead and the extra bytes required by
+     * our caller.
+     */
+    sourceSize = (int)offsets[slots];
+    targetDestSize = (int)(page_max < dst_len ? page_max : dst_len);
+    targetDestSize -= (int)(sizeof(LZ4_PREFIX) + extra);
+
+    LZ4_streamHC_t* stream = LZ4_createStreamHC();
+    LZ4_resetStreamHC(stream, compression_level);
+
+    /* init empty dictionary */
+    const char* compression_dict_data = NULL;
+    int compression_dict_size = 0;
+    LZ4_loadDictHC(stream, compression_dict_data, compression_dict_size);
+
+    *result_slotsp = 0;
+    *result_lenp = sizeof(LZ4_PREFIX);
+
+    while (*result_slotsp < slots) {
+        lz4_len = LZ4_compress_HC_continue(stream,
+            (const char *)src + *offsets, (char *)dst + *result_lenp + sizeof(lz4_len),
+            *(offsets + 1) - *offsets, targetDestSize - sizeof(lz4_len));
+        if (lz4_len == 0)
+            break;
+
+#ifdef WORDS_BIGENDIAN
+        *(uint32_t *)((char *)dst + *result_lenp) = lz4_bswap32(lz4_len);
+#else
+        *(int *)((char *)dst + *result_lenp) = lz4_len;
+#endif
+        targetDestSize -= (sizeof(lz4_len) + lz4_len);
+        *result_lenp += sizeof(lz4_len) + lz4_len;
+        ++*result_slotsp;
+        ++offsets;
+    }
+    LZ4_freeStreamHC(stream);
+    prefix.compressed_len = (uint32_t)*result_lenp - sizeof(LZ4_PREFIX);
+    prefix.uncompressed_len = *offsets;
+    prefix.useful_len = *offsets;
+    prefix.unused = 1; // make sign that we need streaming decompression
+    //lz4_prefix_dump_ex(compressor, session, "lz4hc_compress_raw", &prefix, *result_slotsp, slots);
+#ifdef WORDS_BIGENDIAN
+    lz4_prefix_swap(&prefix);
+#endif
+    memcpy(dst, &prefix, sizeof(LZ4_PREFIX));
+    return 0;
+}
+
 /*
  * lz4_pre_size --
  *	WiredTiger LZ4 destination buffer sizing for compression.
@@ -397,6 +692,35 @@ lz_add_compressor(WT_CONNECTION *connection, bool raw, const char *name)
 	    connection, name, (WT_COMPRESSOR *)lz4_compressor, NULL));
 }
 
+/*
+ * lz4hc_add_compressor --
+ *	Add a LZ4HC compressor.
+ */
+static int
+lz4hc_add_compressor(WT_CONNECTION *connection, bool raw, const char *name)
+{
+	LZ4_COMPRESSOR *lz4_compressor;
+
+	/*
+	 * There are two almost identical LZ4 compressors: one using raw
+	 * compression to target a specific block size, and one without.
+	 */
+	if ((lz4_compressor = calloc(1, sizeof(LZ4_COMPRESSOR))) == NULL)
+		return (errno);
+
+	lz4_compressor->compressor.compress = lz4hc_compress;
+	lz4_compressor->compressor.compress_raw = raw ? lz4hc_compress_raw : NULL;
+	lz4_compressor->compressor.decompress = lz4hc_decompress;
+	lz4_compressor->compressor.pre_size = lz4_pre_size;
+	lz4_compressor->compressor.terminate = lz4_terminate;
+
+	lz4_compressor->wt_api = connection->get_extension_api(connection);
+
+	/* Load the compressor */
+	return (connection->add_compressor(
+	    connection, name, (WT_COMPRESSOR *)lz4_compressor, NULL));
+}
+
 int lz4_extension_init(WT_CONNECTION *, WT_CONFIG_ARG *);
 
 /*
@@ -415,6 +739,10 @@ lz4_extension_init(WT_CONNECTION *connection, WT_CONFIG_ARG *config)
 	if ((ret = lz_add_compressor(connection, true, "lz4")) != 0)
 		return (ret);
 	if ((ret = lz_add_compressor(connection, false, "lz4-noraw")) != 0)
+		return (ret);
+	if ((ret = lz4hc_add_compressor(connection, true, "lz4hc")) != 0)
+		return (ret);
+	if ((ret = lz4hc_add_compressor(connection, false, "lz4hc-noraw")) != 0)
 		return (ret);
 	return (0);
 }
